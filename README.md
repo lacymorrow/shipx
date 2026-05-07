@@ -7,9 +7,9 @@ Like [np](https://github.com/sindresorhus/np), but built with [@clack/prompts](h
 ## Install
 
 ```bash
-npm install -g shipx
+npm install -g @lacymorrow/shipx
 # or run directly
-npx shipx
+npx @lacymorrow/shipx
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ If no config is found, shipx auto-detects your `package.json` and runs all steps
 ### Example `shipx.config.ts`
 
 ```ts
-import type { ShipConfig } from "shipx";
+import type { ShipConfig } from "@lacymorrow/shipx";
 
 export default {
   packageJsonPaths: ["package.json", "packages/core/package.json"],
