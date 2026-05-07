@@ -7,7 +7,7 @@
   "description": "Interactive release CLI — bump, tag, publish, and ship your packages with a beautiful terminal UI",
   "type": "module",
   "bin": {
-    "shipx": "./dist/cli.js"
+    "shipx": "dist/cli.js"
   },
   "scripts": {
     "build": "bun build src/cli.ts --outfile dist/cli.js --target node && node -e \"const f=require('fs');const c=f.readFileSync('dist/cli.js','utf8');f.writeFileSync('dist/cli.js',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lacymorrow/shipx"
+    "url": "git+https://github.com/lacymorrow/shipx.git"
   },
   "homepage": "https://github.com/lacymorrow/shipx",
   "bugs": {
