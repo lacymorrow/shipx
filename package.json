@@ -1,0 +1,49 @@
+{
+  "name": "shipx",
+  "version": "0.0.1",
+  "description": "Interactive release CLI — bump, tag, publish, and ship your packages with a beautiful terminal UI",
+  "type": "module",
+  "bin": {
+    "shipx": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist --target node",
+    "typecheck": "tsc --noEmit",
+    "dev": "bun run src/cli.ts"
+  },
+  "keywords": [
+    "release",
+    "publish",
+    "npm",
+    "version",
+    "bump",
+    "tag",
+    "ship",
+    "cli",
+    "interactive",
+    "clack"
+  ],
+  "author": "Lacy Morrow <lacy@lacymorrow.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lacymorrow/shipx"
+  },
+  "homepage": "https://github.com/lacymorrow/shipx",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  }
+}
