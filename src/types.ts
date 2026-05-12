@@ -9,6 +9,12 @@ export interface ShipConfig {
 	packageJsonPaths?: string[];
 	/** Additional files with regex-based version bumping */
 	bumpFiles?: BumpFileConfig[];
+	/**
+	 * Cargo workspace directories to version-bump via `cargo set-version --workspace`.
+	 * Each path is relative to the project root and should contain a Cargo.toml.
+	 * Auto-detected: if `src-tauri/Cargo.toml` exists and this is not configured, it is added automatically.
+	 */
+	cargoWorkspaces?: string[];
 	/** Steps to run (all enabled by default) */
 	steps?: {
 		preflight?: boolean;
@@ -27,6 +33,12 @@ export interface ShipConfig {
 		releaseBranch?: string;
 		/** Tag prefix. Default: 'v' */
 		tagPrefix?: string;
+		/**
+		 * Extra git tags to create and push alongside the main tag.
+		 * Use `{tag}` for the full tag (e.g. `v0.5.3`) or `{version}` for the bare version.
+		 * Example: `["cua-{tag}"]` creates `cua-v0.5.3` for Juno's juno-cua releases.
+		 */
+		extraTags?: string[];
 		/** Commit message template. Use {tag} placeholder. Default: 'release: {tag}' */
 		commitMessage?: string;
 		/** Commit flags. Default: '--no-verify' */

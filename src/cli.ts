@@ -3,6 +3,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
+import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
 import { createGithubRelease } from "./steps/github.ts";
@@ -32,6 +33,30 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	const rootPkg = readJson(pkgJsonPaths[0]);
 	const currentVersion = rootPkg.version as string;
+	if (!currentVersion) {
+		p.log.error(`No version found in ${pc.cyan(pkgJsonPaths[0])}`);
+		process.exit(1);
+	}
+
+	// Use the package name from package.json, stripping any npm scope prefix
+	let projectName = "shipx";
+	if (typeof rootPkg.name === "string") {
+		projectName = rootPkg.name.replace(/^@[^/]+\//, "");
+	}
+
+	if (process.stdout.isTTY) {
+		console.clear();
+	}
+	p.intro(
+		pc.magenta(
+			pc.bold(isBeta ? `  ${projectName} — Beta Release  ` : `  ${projectName} — Release  `),
+		),
+	);
+
+	let branch = "main";
+	if (config.steps.preflight) {
+		branch = runPreflight(config, isBeta);
+	}
 
 	// Use the package name from package.json, stripping any npm scope prefix
 	let projectName = "shipx";
@@ -64,8 +89,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(0);
 	}
 
+	// Bump package.json and Cargo.toml files
+	let cargoStageDirs: string[] = [];
 	if (config.steps.bumpVersion) {
 		bumpVersionFiles(config, newVersion);
+		cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
 	}
 
 	let changelog = `- Release ${tag}`;
@@ -74,12 +102,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	}
 
 	if (config.steps.commit || config.steps.tag) {
-		const filesToStage = getFilesToStage(config);
-		commitAndTag(config, tag, filesToStage);
+		const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
+		commitAndTag(config, tag, newVersion, filesToStage);
 	}
 
 	if (config.steps.push) {
-		pushChanges(config, branch, tag);
+		pushChanges(config, branch, tag, newVersion);
 	}
 
 	if (config.steps.githubRelease) {
