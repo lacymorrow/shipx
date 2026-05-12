@@ -2,7 +2,13 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
 import { exec } from "../utils.ts";
-import { resolveExtraTags } from "./cargo.ts";
+
+function resolveExtraTags(config: ResolvedConfig, tag: string, newVersion: string): string[] {
+	const tags = config.git.extraTags.map((tpl) =>
+		tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion),
+	);
+	return [...new Set(tags)].filter((t) => t !== tag);
+}
 
 function splitFlags(flags: string): string[] {
 	return flags.split(/\s+/).filter(Boolean);

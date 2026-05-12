@@ -46,14 +46,3 @@ export function bumpCargoWorkspaces(
 
 	return bumped;
 }
-
-/** Resolve extra tag names from their template strings. */
-export function resolveExtraTags(
-	config: ResolvedConfig,
-	tag: string,
-	newVersion: string,
-): string[] {
-	return config.git.extraTags.map((tpl) =>
-		tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion),
-	);
-}

@@ -33,11 +33,15 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	const rootPkg = readJson(pkgJsonPaths[0]);
 	const currentVersion = rootPkg.version as string;
+	if (!currentVersion) {
+		p.log.error(`No version found in ${pc.cyan(pkgJsonPaths[0])}`);
+		process.exit(1);
+	}
 
 	// Use the package name from package.json, stripping any npm scope prefix
 	let projectName = "shipx";
-	if (rootPkg.name) {
-		projectName = (rootPkg.name as string).replace(/^@[^/]+\//, "");
+	if (typeof rootPkg.name === "string") {
+		projectName = rootPkg.name.replace(/^@[^/]+\//, "");
 	}
 
 	if (process.stdout.isTTY) {
