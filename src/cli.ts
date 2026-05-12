@@ -22,20 +22,6 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 	const config = await loadConfig(root);
 
-	if (process.stdout.isTTY) {
-		console.clear();
-	}
-	p.intro(
-		pc.magenta(
-			pc.bold(isBeta ? "  shipx — Beta Release  " : "  shipx — Release  "),
-		),
-	);
-
-	let branch = "main";
-	if (config.steps.preflight) {
-		branch = runPreflight(config, isBeta);
-	}
-
 	const pkgJsonPaths = config.packageJsonPaths.map((rel) =>
 		resolve(root, rel),
 	);
@@ -46,6 +32,26 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	const rootPkg = readJson(pkgJsonPaths[0]);
 	const currentVersion = rootPkg.version as string;
+
+	// Use the package name from package.json, stripping any npm scope prefix
+	let projectName = "shipx";
+	if (rootPkg.name) {
+		projectName = (rootPkg.name as string).replace(/^@[^/]+\//, "");
+	}
+
+	if (process.stdout.isTTY) {
+		console.clear();
+	}
+	p.intro(
+		pc.magenta(
+			pc.bold(isBeta ? `  ${projectName} — Beta Release  ` : `  ${projectName} — Release  `),
+		),
+	);
+
+	let branch = "main";
+	if (config.steps.preflight) {
+		branch = runPreflight(config, isBeta);
+	}
 
 	const newVersion = await pickVersion(currentVersion, args[0], isBeta);
 	const tag = `${config.git.tagPrefix}${newVersion}`;
