@@ -6,6 +6,7 @@ import { exec, readJson } from "./utils.ts";
 const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	packageJsonPaths: [],
 	bumpFiles: [],
+	cargoWorkspaces: [],
 	steps: {
 		preflight: true,
 		changelog: true,
@@ -20,6 +21,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	git: {
 		releaseBranch: "main",
 		tagPrefix: "v",
+		extraTags: [],
 		commitMessage: "release: {tag}",
 		commitFlags: "--no-verify",
 		pushFlags: "--no-verify",
@@ -40,6 +42,7 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 	return {
 		packageJsonPaths: user.packageJsonPaths ?? base.packageJsonPaths,
 		bumpFiles: user.bumpFiles ?? base.bumpFiles,
+		cargoWorkspaces: user.cargoWorkspaces ?? base.cargoWorkspaces,
 		steps: { ...base.steps, ...user.steps },
 		git: { ...base.git, ...user.git },
 		npm: { ...base.npm, ...user.npm },
@@ -78,12 +81,22 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 	}
 
 	const merged = mergeConfig(DEFAULTS, userConfig);
+
 	if (!merged.packageJsonPaths.length && existsSync(pkgPath)) {
 		merged.packageJsonPaths = ["package.json"];
 	}
 
 	if (!merged.npm.cwd) {
 		merged.npm.cwd = root;
+	}
+
+	// Auto-detect Tauri workspace: if src-tauri/Cargo.toml exists and the user
+	// hasn't explicitly configured cargoWorkspaces, add it automatically.
+	if (!merged.cargoWorkspaces.length) {
+		const srcTauri = resolve(root, "src-tauri");
+		if (existsSync(resolve(srcTauri, "Cargo.toml"))) {
+			merged.cargoWorkspaces = ["src-tauri"];
+		}
 	}
 
 	if (!merged.homebrew.tapPath) {

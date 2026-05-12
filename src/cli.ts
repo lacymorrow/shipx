@@ -3,6 +3,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
+import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
 import { createGithubRelease } from "./steps/github.ts";
@@ -64,9 +65,13 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(0);
 	}
 
+	// Bump package.json files
 	if (config.steps.bumpVersion) {
 		bumpVersionFiles(config, newVersion);
 	}
+
+	// Bump Cargo.toml files (Tauri / Rust workspaces)
+	const cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
 
 	let changelog = `- Release ${tag}`;
 	if (config.steps.changelog) {
@@ -74,12 +79,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	}
 
 	if (config.steps.commit || config.steps.tag) {
-		const filesToStage = getFilesToStage(config);
-		commitAndTag(config, tag, filesToStage);
+		const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
+		commitAndTag(config, tag, newVersion, filesToStage);
 	}
 
 	if (config.steps.push) {
-		pushChanges(config, branch, tag);
+		pushChanges(config, branch, tag, newVersion);
 	}
 
 	if (config.steps.githubRelease) {
