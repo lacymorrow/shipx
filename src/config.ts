@@ -92,7 +92,8 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 
 	// Auto-detect Tauri workspace: if src-tauri/Cargo.toml exists and the user
 	// hasn't explicitly configured cargoWorkspaces, add it automatically.
-	if (!merged.cargoWorkspaces.length) {
+	// Gate on undefined so that cargoWorkspaces: [] can opt out of auto-detection.
+	if (userConfig.cargoWorkspaces === undefined) {
 		const srcTauri = resolve(root, "src-tauri");
 		if (existsSync(resolve(srcTauri, "Cargo.toml"))) {
 			merged.cargoWorkspaces = ["src-tauri"];

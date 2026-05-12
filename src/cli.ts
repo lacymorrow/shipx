@@ -65,13 +65,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(0);
 	}
 
-	// Bump package.json files
+	// Bump package.json and Cargo.toml files
+	let cargoStageDirs: string[] = [];
 	if (config.steps.bumpVersion) {
 		bumpVersionFiles(config, newVersion);
+		cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
 	}
-
-	// Bump Cargo.toml files (Tauri / Rust workspaces)
-	const cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
 
 	let changelog = `- Release ${tag}`;
 	if (config.steps.changelog) {
