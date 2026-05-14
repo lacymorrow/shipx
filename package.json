@@ -1,8 +1,5 @@
 {
   "name": "@lacymorrow/shipx",
-  "publishConfig": {
-    "access": "public"
-  },
   "version": "0.1.0",
   "description": "Interactive release CLI — bump, tag, publish, and ship your packages with a beautiful terminal UI",
   "type": "module",
@@ -27,25 +24,49 @@
     "interactive",
     "clack",
     "github",
-    "semver"
+    "semver",
+    "homebrew",
+    "cargo",
+    "tauri",
+    "monorepo"
   ],
-  "author": "Lacy Morrow <lacy@lacymorrow.com>",
+  "author": {
+    "name": "Lacy Morrow",
+    "email": "lacy@lacymorrow.com",
+    "url": "https://lacymorrow.com"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lacymorrow/shipx.git"
   },
-  "homepage": "https://github.com/lacymorrow/shipx",
+  "homepage": "https://github.com/lacymorrow/shipx#readme",
   "bugs": {
     "url": "https://github.com/lacymorrow/shipx/issues"
   },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/lacymorrow"
+    },
+    {
+      "type": "patreon",
+      "url": "https://patreon.com/lacymorrow"
+    },
+    "https://buymeacoffee.com/lm"
+  ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    ".github/assets/logo.svg",
+    ".github/assets/logo-horizontal.svg"
   ],
   "dependencies": {
     "@clack/prompts": "^1.0.0",

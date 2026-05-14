@@ -58,26 +58,6 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		branch = runPreflight(config, isBeta);
 	}
 
-	// Use the package name from package.json, stripping any npm scope prefix
-	let projectName = "shipx";
-	if (rootPkg.name) {
-		projectName = (rootPkg.name as string).replace(/^@[^/]+\//, "");
-	}
-
-	if (process.stdout.isTTY) {
-		console.clear();
-	}
-	p.intro(
-		pc.magenta(
-			pc.bold(isBeta ? `  ${projectName} — Beta Release  ` : `  ${projectName} — Release  `),
-		),
-	);
-
-	let branch = "main";
-	if (config.steps.preflight) {
-		branch = runPreflight(config, isBeta);
-	}
-
 	const newVersion = await pickVersion(currentVersion, args[0], isBeta);
 	const tag = `${config.git.tagPrefix}${newVersion}`;
 
