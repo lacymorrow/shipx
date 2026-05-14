@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/lacymorrow/shipx/discussions
+    about: Ask questions, share recipes, or chat about shipx.
+  - name: Security disclosure
+    url: https://github.com/lacymorrow/shipx/security/advisories/new
+    about: Report a security vulnerability privately.

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <title>shipx</title>
+  <!-- Rounded square container — magenta -->
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="#c026d3"/>
+  <!-- Forward chevron stack (white) — represents shipping / forward motion -->
+  <g fill="#ffffff">
+    <!-- chevron 1 (back, smaller, lower opacity for depth) -->
+    <path d="M62 90 L98 128 L62 166 L62 138 L78 128 L62 118 Z" opacity="0.45"/>
+    <!-- chevron 2 (middle) -->
+    <path d="M104 90 L140 128 L104 166 L104 138 L120 128 L104 118 Z" opacity="0.75"/>
+    <!-- chevron 3 (front, primary) -->
+    <path d="M146 90 L194 128 L146 166 L146 138 L168 128 L146 118 Z"/>
+  </g>
+</svg>

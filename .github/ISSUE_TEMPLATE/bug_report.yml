@@ -1,0 +1,67 @@
+name: Bug report
+description: shipx did something unexpected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more detail you can share, the faster it gets fixed.
+
+  - type: input
+    id: version
+    attributes:
+      label: shipx version
+      description: "Output of `shipx --version` or your installed version from `package.json`."
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "Output of `node --version`."
+      placeholder: "v20.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows (WSL)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: "Paste the full terminal output if you can — including any error message and stack trace."
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your shipx config
+      description: "Paste your `shipx.config.ts` / `.shipxrc.json` / `package.json#shipx`."
+      render: ts
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: "If you can produce a minimal failing repo, link it here."

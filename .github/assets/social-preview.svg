@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" fill="none">
+  <title>shipx — Interactive release CLI</title>
+  <!-- Background: deep near-black with subtle texture -->
+  <defs>
+    <radialGradient id="bgGlow" cx="80%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#c026d3" stop-opacity="0.18"/>
+      <stop offset="60%" stop-color="#1a0b1f" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="640" fill="#0a0510"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect width="1280" height="640" fill="url(#bgGlow)"/>
+
+  <!-- Decorative chevron stack (large, low-opacity, on the right) -->
+  <g transform="translate(820, 180)" opacity="0.10">
+    <path d="M0 0 L260 200 L0 400 L0 280 L100 200 L0 120 Z" fill="#c026d3"/>
+  </g>
+
+  <!-- Mark (top-left) -->
+  <g transform="translate(96, 96)">
+    <rect x="0" y="0" width="120" height="120" rx="26" fill="#c026d3"/>
+    <g fill="#ffffff">
+      <path d="M21 38 L38 57 L21 76 L21 62 L29 57 L21 52 Z" opacity="0.45"/>
+      <path d="M42 38 L59 57 L42 76 L42 62 L50 57 L42 52 Z" opacity="0.75"/>
+      <path d="M63 38 L86 57 L63 76 L63 62 L74 57 L63 52 Z"/>
+    </g>
+  </g>
+
+  <!-- Wordmark + tagline -->
+  <text
+    x="96"
+    y="380"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Inter', 'Segoe UI', Roboto, sans-serif"
+    font-size="160"
+    font-weight="800"
+    letter-spacing="-8"
+    fill="#fafafa"
+  >shipx</text>
+
+  <text
+    x="100"
+    y="450"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Inter', 'Segoe UI', Roboto, sans-serif"
+    font-size="36"
+    font-weight="500"
+    letter-spacing="-0.5"
+    fill="#e879f9"
+  >Interactive release CLI</text>
+
+  <text
+    x="100"
+    y="500"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Inter', 'Segoe UI', Roboto, sans-serif"
+    font-size="28"
+    font-weight="400"
+    letter-spacing="-0.3"
+    fill="#a1a1aa"
+  >Bump, tag, publish — npm · Cargo · Homebrew · GitHub.</text>
+
+  <!-- Subtle bottom-right author tag -->
+  <text
+    x="1184"
+    y="592"
+    text-anchor="end"
+    font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+    font-size="20"
+    font-weight="500"
+    fill="#6b6275"
+  >@lacymorrow/shipx</text>
+</svg>

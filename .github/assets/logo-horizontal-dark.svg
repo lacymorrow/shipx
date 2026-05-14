@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 486 200" fill="none">
+  <title>shipx</title>
+  <!-- Mark -->
+  <g transform="translate(20, 20)">
+    <rect x="0" y="0" width="160" height="160" rx="34" fill="#c026d3"/>
+    <g fill="#ffffff">
+      <path d="M28 51 L51 75 L28 99 L28 81 L38 75 L28 69 Z" opacity="0.45"/>
+      <path d="M55 51 L78 75 L55 99 L55 81 L65 75 L55 69 Z" opacity="0.75"/>
+      <path d="M82 51 L113 75 L82 99 L82 81 L96 75 L82 69 Z"/>
+    </g>
+  </g>
+  <!-- Wordmark (light, for dark backgrounds) -->
+  <text
+    x="210"
+    y="132"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Inter', 'Segoe UI', Roboto, sans-serif"
+    font-size="120"
+    font-weight="800"
+    letter-spacing="-6"
+    fill="#fafafa"
+  >shipx</text>
+</svg>

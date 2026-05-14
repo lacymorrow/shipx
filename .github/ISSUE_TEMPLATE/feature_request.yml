@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a new step, config option, or behavior
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: "Describe the friction or missing capability — not the proposed solution."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like shipx to do?
+      description: "A sketch of the API / config shape / CLI flag. Code samples welcome."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: "Other tools, manual workarounds, or shipx config tricks you've tried."
