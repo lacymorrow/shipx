@@ -1,5 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { discoverProjects, type DiscoveredProject } from "./discover.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
@@ -12,6 +14,23 @@ import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
 import { errorText } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
+
+function loadIgnored(root: string): Set<string> {
+	const ignorePath = resolve(root, ".shipxignore");
+	if (!existsSync(ignorePath)) return new Set();
+	return new Set(
+		readFileSync(ignorePath, "utf-8")
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line && !line.startsWith("#")),
+	);
+}
+
+function saveIgnored(root: string, ignored: Set<string>): void {
+	const ignorePath = resolve(root, ".shipxignore");
+	const content = [...ignored].sort().join("\n") + "\n";
+	writeFileSync(ignorePath, content);
+}
 
 interface PreparedProject {
 	project: DiscoveredProject;
@@ -33,7 +52,9 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	const spinner = p.spinner();
 	spinner.start("Scanning for projects");
-	const projects = discoverProjects(root);
+	const projects = discoverProjects(root, (scanned, found, current) => {
+		spinner.message(`Scanning: ${pc.dim(current)} ${pc.dim(`(${found} found)`)}`);
+	});
 	spinner.stop(`Found ${pc.cyan(String(projects.length))} projects`);
 
 	if (!projects.length) {
@@ -51,6 +72,11 @@ export async function multiMain(argv: string[]): Promise<void> {
 		p.log.info(`${pc.dim(String(clean.length))} projects up to date`);
 	}
 
+	const ignored = loadIgnored(root);
+	if (ignored.size) {
+		p.log.info(`${pc.dim(String(ignored.size))} projects in .shipxignore`);
+	}
+
 	const options = projects.map((proj) => {
 		const changes = proj.changeCount > 0
 			? pc.yellow(`${proj.changeCount} new commit${proj.changeCount === 1 ? "" : "s"}`)
@@ -65,10 +91,14 @@ export async function multiMain(argv: string[]): Promise<void> {
 		};
 	});
 
+	const preSelected = withChanges
+		.filter((proj) => !ignored.has(proj.dirName))
+		.map((proj) => proj.path);
+
 	const selected = await p.multiselect({
 		message: "Select projects to release",
 		options,
-		initialValues: withChanges.map((proj) => proj.path),
+		initialValues: preSelected,
 		required: true,
 	});
 
@@ -78,6 +108,14 @@ export async function multiMain(argv: string[]): Promise<void> {
 	}
 
 	const selectedPaths = selected as string[];
+
+	const newIgnored = new Set<string>();
+	for (const proj of projects) {
+		if (!selectedPaths.includes(proj.path)) {
+			newIgnored.add(proj.dirName);
+		}
+	}
+	saveIgnored(root, newIgnored);
 	const selectedProjects = projects.filter((proj) => selectedPaths.includes(proj.path));
 
 	const dirtySelected = selectedProjects.filter((proj) => proj.dirty);

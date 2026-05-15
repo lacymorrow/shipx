@@ -52,9 +52,13 @@ function isDirty(dir: string): boolean {
 	}
 }
 
-export function discoverProjects(parentDir: string): DiscoveredProject[] {
+export function discoverProjects(
+	parentDir: string,
+	onProgress?: (scanned: number, found: number, current: string) => void,
+): DiscoveredProject[] {
 	const entries = readdirSync(parentDir);
 	const projects: DiscoveredProject[] = [];
+	let scanned = 0;
 
 	for (const entry of entries) {
 		if (entry.startsWith(".") || entry === "node_modules") continue;
@@ -69,6 +73,9 @@ export function discoverProjects(parentDir: string): DiscoveredProject[] {
 		const pkgPath = resolve(fullPath, "package.json");
 		if (!existsSync(pkgPath)) continue;
 		if (!isGitRepo(fullPath)) continue;
+
+		scanned++;
+		onProgress?.(scanned, projects.length, entry);
 
 		const pkg = readJson(pkgPath);
 		const dirName = basename(fullPath);
