@@ -49,7 +49,7 @@ npx @lacymorrow/shipx
 npm install --save-dev @lacymorrow/shipx
 ```
 
-Requires Node ≥18. `gh` CLI is required for `githubRelease`. `cargo-edit` is required if you bump Cargo workspaces.
+Requires Node ≥20. `gh` CLI is required for `githubRelease`. `cargo-edit` is required if you bump Cargo workspaces.
 
 ## Usage
 

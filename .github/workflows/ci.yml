@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        node: ["18", "20", "22"]
+        node: ["20", "22"]
         include:
           - os: macos-latest
             node: "20"
@@ -43,5 +43,5 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Verify built binary loads
-        run: node -e "require('node:fs').accessSync('dist/cli.js')"
+      - name: Verify built binary runs
+        run: node dist/cli.js --help
