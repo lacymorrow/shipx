@@ -17,7 +17,62 @@ import { exec, isGitRepo, readJson } from "./utils.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
+function getVersion(): string {
+	try {
+		const pkg = readJson(new URL("../package.json", import.meta.url).pathname);
+		return (pkg.version as string) ?? "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
+function printHelp(): void {
+	const version = getVersion();
+	console.log(`
+${pc.bold("shipx")} ${pc.dim(`v${version}`)} — Interactive release CLI
+
+${pc.bold("USAGE")}
+  ${pc.green("shipx")} [command] [options]
+
+${pc.bold("COMMANDS")}
+  ${pc.cyan("patch")}              Bump patch version (x.y.Z)
+  ${pc.cyan("minor")}              Bump minor version (x.Y.0)
+  ${pc.cyan("major")}              Bump major version (X.0.0)
+  ${pc.cyan("<semver>")}            Set an explicit version (e.g. 2.0.0)
+
+  If no command is given, shipx prompts interactively.
+
+${pc.bold("OPTIONS")}
+  ${pc.yellow("--beta")}             Create a beta pre-release (-beta.N)
+  ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
+  ${pc.yellow("--help, -h")}         Show this help message
+  ${pc.yellow("--version, -v")}      Print version
+
+${pc.bold("ENVIRONMENT")}
+  ${pc.yellow("SHIPX_ROOT")}         Override the project directory (default: cwd)
+
+${pc.bold("CONFIG")}
+  shipx looks for configuration in this order:
+  1. shipx.config.ts / shipx.config.js
+  2. .shipxrc.json / .shipxrc
+  3. "shipx" key in package.json
+  4. Defaults (auto-detects package.json, Cargo.toml, homebrew-tap)
+
+${pc.dim("https://github.com/lacymorrow/shipx")}
+`);
+}
+
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		printHelp();
+		return;
+	}
+
+	if (argv.includes("--version") || argv.includes("-v")) {
+		console.log(getVersion());
+		return;
+	}
+
 	if (argv.includes("--multi")) {
 		return multiMain(argv.filter((a) => a !== "--multi"));
 	}
