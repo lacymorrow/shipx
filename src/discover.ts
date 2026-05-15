@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { exec, readJson } from "./utils.ts";
+import { exec, isGitRepo, readJson } from "./utils.ts";
 
 export interface DiscoveredProject {
 	name: string;
@@ -12,15 +12,6 @@ export interface DiscoveredProject {
 	lastTag: string;
 	branch: string;
 	dirty: boolean;
-}
-
-function isGitRepo(dir: string): boolean {
-	try {
-		exec("git", ["rev-parse", "--git-dir"], { cwd: dir });
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 function getLastTag(dir: string): string {

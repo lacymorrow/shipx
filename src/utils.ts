@@ -32,6 +32,19 @@ export function writeJson(path: string, data: Record<string, unknown>): void {
 	writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 }
 
+export function isGitRepo(dir: string): boolean {
+	try {
+		execFileSync("git", ["rev-parse", "--git-dir"], {
+			cwd: dir,
+			stdio: "pipe",
+			encoding: "utf-8",
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function errorText(err: unknown): string {
 	if (err instanceof Error) {
 		if ("stderr" in err && typeof err.stderr === "string" && err.stderr.trim())
