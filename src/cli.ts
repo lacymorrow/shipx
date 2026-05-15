@@ -13,7 +13,7 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
 import { pickVersion } from "./steps/version.ts";
-import { exec, readJson } from "./utils.ts";
+import { exec, isGitRepo, readJson } from "./utils.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
@@ -47,6 +47,14 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	let projectName = "shipx";
 	if (typeof rootPkg.name === "string") {
 		projectName = rootPkg.name.replace(/^@[^/]+\//, "");
+	}
+
+	if (!isGitRepo(root)) {
+		p.log.error(
+			`${pc.cyan(root)} is not a git repository.\n` +
+			`  Run ${pc.green("shipx")} from inside a project, or use ${pc.green("shipx --multi")} to deploy multiple projects from a parent directory.`,
+		);
+		process.exit(1);
 	}
 
 	if (process.stdout.isTTY) {
