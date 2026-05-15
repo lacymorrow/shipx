@@ -57,9 +57,10 @@ export async function multiMain(argv: string[]): Promise<void> {
 			: pc.dim("no changes");
 		const dirtyFlag = proj.dirty ? pc.red(" [dirty]") : "";
 		const npmFlag = proj.hasNpm ? "" : pc.dim(" (private)");
+		const nameNote = proj.name !== proj.dirName ? pc.dim(` [${proj.name}]`) : "";
 		return {
 			value: proj.path,
-			label: `${proj.name}${npmFlag}`,
+			label: `${proj.dirName}${npmFlag}${nameNote}`,
 			hint: `${pc.dim(proj.version)} · ${changes}${dirtyFlag}`,
 		};
 	});
@@ -83,7 +84,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 	if (dirtySelected.length) {
 		p.log.warn("These projects have uncommitted changes:");
 		for (const proj of dirtySelected) {
-			p.log.message(`  ${pc.yellow("●")} ${proj.name}`);
+			p.log.message(`  ${pc.yellow("●")} ${proj.dirName}`);
 		}
 		const proceed = await p.confirm({
 			message: "Continue anyway? (dirty projects will fail preflight)",
@@ -115,13 +116,13 @@ export async function multiMain(argv: string[]): Promise<void> {
 	const prepared: PreparedProject[] = [];
 
 	for (const project of selectedProjects) {
-		p.log.step(`${pc.cyan(project.name)} ${pc.dim(`(${project.version})`)}`);
+		p.log.step(`${pc.cyan(project.dirName)} ${pc.dim(`(${project.version})`)}`);
 
 		const config = await loadConfig(project.path);
 
 		if (!isBeta && project.branch !== config.git.releaseBranch) {
 			p.log.warn(
-				`${project.name} is on '${pc.yellow(project.branch)}', not '${config.git.releaseBranch}'. Skipping.`,
+				`${project.dirName} is on '${pc.yellow(project.branch)}', not '${config.git.releaseBranch}'. Skipping.`,
 			);
 			continue;
 		}
@@ -131,10 +132,10 @@ export async function multiMain(argv: string[]): Promise<void> {
 		const tag = `${config.git.tagPrefix}${newVersion}`;
 
 		const proceed = await p.confirm({
-			message: `${project.name}: ${pc.cyan(project.version)} → ${pc.green(newVersion)} (${tag})?`,
+			message: `${project.dirName}: ${pc.cyan(project.version)} → ${pc.green(newVersion)} (${tag})?`,
 		});
 		if (p.isCancel(proceed) || !proceed) {
-			p.log.info(`Skipping ${project.name}`);
+			p.log.info(`Skipping ${project.dirName}`);
 			continue;
 		}
 
@@ -165,7 +166,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 			prepared.push({ project, config, newVersion, tag, changelog, isBeta });
 		} catch (err) {
-			p.log.error(`${project.name}: ${errorText(err)}`);
+			p.log.error(`${project.dirName}: ${errorText(err)}`);
 			const cont = await p.confirm({
 				message: "Continue with remaining projects?",
 				initialValue: true,
@@ -215,10 +216,10 @@ export async function multiMain(argv: string[]): Promise<void> {
 		const results: { name: string; success: boolean }[] = [];
 
 		for (const pp of npmProjects) {
-			p.log.message(`  ${pc.cyan("→")} ${pp.project.name}`);
+			p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
 			const success = await publishNpm(pp.config, pp.isBeta, otp);
 			if (!success) otp = undefined;
-			results.push({ name: pp.project.name, success });
+			results.push({ name: pp.project.dirName, success });
 		}
 
 		const succeeded = results.filter((r) => r.success);
@@ -243,7 +244,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	// Summary
 	const summary = prepared
-		.map((pp) => `${pc.green("✓")} ${pp.project.name} ${pc.green(pp.tag)}`)
+		.map((pp) => `${pc.green("✓")} ${pp.project.dirName} ${pc.green(pp.tag)}`)
 		.join("\n  ");
 	p.outro(`Released ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}:\n  ${summary}`);
 }
