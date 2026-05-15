@@ -3,6 +3,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
+import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
@@ -17,6 +18,10 @@ import { exec, readJson } from "./utils.ts";
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+	if (argv.includes("--multi")) {
+		return multiMain(argv.filter((a) => a !== "--multi"));
+	}
+
 	const isBeta = argv.includes("--beta");
 	const args = argv.filter((a) => a !== "--beta");
 

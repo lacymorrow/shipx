@@ -67,6 +67,9 @@ shipx 2.0.0
 
 # Beta release (publishes with --tag beta, skips Homebrew)
 shipx --beta
+
+# Multi-project deploy — scan parent dir, batch-publish with one OTP
+cd ~/repo && shipx --multi
 ```
 
 > [!TIP]
@@ -210,6 +213,26 @@ export default {
 
 shipx downloads the tarball, computes SHA256, updates `url`/`sha256` in the formula, commits, and pushes from the tap.
 
+### Multi-project deploy
+
+Got a bunch of repos in `~/repo/`? Deploy them all at once:
+
+```bash
+cd ~/repo
+shipx --multi
+```
+
+shipx scans for subdirectories with a `package.json`, detects which have unreleased commits, and lets you pick which to release. The killer feature: **npm publishes are batched** — enter your OTP once and it's reused across all packages, so your 2FA code doesn't expire mid-deploy.
+
+The flow:
+1. **Select projects** — sorted by change count, with dirty/private indicators
+2. **Pick versions** — individually, or apply the same bump type to all
+3. **Prepare** — each project gets its own bump → commit → tag → push → GitHub release
+4. **Batch publish** — all npm publishes happen back-to-back with a shared OTP
+5. **Homebrew** — formulas updated for non-beta releases
+
+Combine with `--beta` for beta batch releases: `shipx --multi --beta`.
+
 ### Beta release
 
 ```bash
@@ -232,6 +255,7 @@ shipx --beta
 | **Cargo workspaces** | ✅ | ❌ | via plugin | ❌ |
 | **Homebrew formula** | ✅ | ❌ | via plugin | ❌ |
 | Beta / pre-release | ✅ | ✅ | ✅ | ✅ |
+| **Multi-project batch deploy** | ✅ | ❌ | ❌ | ❌ |
 | Multi-package monorepo (coupled) | ✅ | ❌ | ✅ | ✅ |
 | Multi-package monorepo (independent) | ❌ | ❌ | ✅ | ✅ |
 | Changelog from PR labels | ❌ | ❌ | via plugin | ✅ |
