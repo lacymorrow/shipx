@@ -3,7 +3,10 @@ import { basename, resolve } from "node:path";
 import { exec, isGitRepo, readJson } from "./utils.ts";
 
 export interface DiscoveredProject {
+	/** npm package name from package.json */
 	name: string;
+	/** Directory basename — unique per scan, used for display */
+	dirName: string;
 	path: string;
 	version: string;
 	private: boolean;
@@ -68,7 +71,8 @@ export function discoverProjects(parentDir: string): DiscoveredProject[] {
 		if (!isGitRepo(fullPath)) continue;
 
 		const pkg = readJson(pkgPath);
-		const name = (typeof pkg.name === "string" ? pkg.name : basename(fullPath));
+		const dirName = basename(fullPath);
+		const name = (typeof pkg.name === "string" ? pkg.name : dirName);
 		const version = (typeof pkg.version === "string" ? pkg.version : "0.0.0");
 		const isPrivate = pkg.private === true;
 
@@ -79,6 +83,7 @@ export function discoverProjects(parentDir: string): DiscoveredProject[] {
 
 		projects.push({
 			name,
+			dirName,
 			path: fullPath,
 			version,
 			private: isPrivate,
