@@ -2,6 +2,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
 import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
@@ -19,7 +20,7 @@ export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
 function getVersion(): string {
 	try {
-		const pkg = readJson(new URL("../package.json", import.meta.url).pathname);
+		const pkg = readJson(fileURLToPath(new URL("../package.json", import.meta.url)));
 		return (pkg.version as string) ?? "unknown";
 	} catch {
 		return "unknown";
