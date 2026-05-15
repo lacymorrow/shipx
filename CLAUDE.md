@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`@lacymorrow/shipx` — an interactive release CLI built on `@clack/prompts`. Runs an ordered pipeline (preflight → version bump → changelog → commit/tag → push → GitHub release → npm → Homebrew) over a project. Published to npm; consumed by other repos in `~/repo/` (notably Juno via Cargo workspace support).
+`@lacymorrow/shipx` — an interactive release CLI built on `@clack/prompts`. Runs an ordered pipeline (preflight → version bump → changelog → commit/tag → push → GitHub release → npm → Homebrew) over a project. Supports multi-project batch deploys via `--multi`. Published to npm; consumed by other repos in `~/repo/` (notably Juno via Cargo workspace support).
 
 ## Commands
 
 | Task | Command |
 |------|---------|
 | Run locally against cwd | `bun run dev` (= `bun run src/cli.ts`) |
+| Multi-project deploy | `bun run src/cli.ts --multi` (from parent dir, or `SHIPX_ROOT=~/repo`) |
 | Run against another project | `SHIPX_ROOT=/path/to/project bun run src/cli.ts` |
 | Typecheck | `bun run typecheck` (`tsc --noEmit`) |
 | Build for publish | `bun run build` |
@@ -52,9 +53,20 @@ Notable behavior:
 - **`bump.ts`** — rewrites `package.json` `version` field and applies regex-based `bumpFiles` replacements. Returns paths to stage via `getFilesToStage()`.
 - **`cargo.ts`** — shells `cargo set-version --workspace <v>` per workspace dir. Requires `cargo-edit` to be installed; failure prints the install hint and `process.exit(1)`.
 - **`git.ts`** — single commit for all bumped files, then tag. `extraTags` templates support `{tag}` (full, e.g. `v0.5.3`) and `{version}` (bare). Dedup'd and never duplicates the main tag. Commit/push flags default to `--no-verify`; respect any user override rather than hardcoding bypasses.
-- **`npm.ts`** — on failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits.
+- **`npm.ts`** — on failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits. Accepts an optional `otp` parameter for batch mode (multi-project deploy passes OTP through).
 - **`homebrew.ts`** — downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula, commits and pushes from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this).
 - **`github.ts`** — uses `gh release create`. Failures are logged but do not abort the pipeline.
+
+### Multi-project mode (`src/multi.ts`, `src/discover.ts`)
+
+`--multi` activates batch deploy mode. It scans the current (or `SHIPX_ROOT`) directory for subdirectories that contain a `package.json` and are git repos. For each it detects unreleased commits (since last tag), current version, and dirty state.
+
+The flow runs in three phases:
+1. **Prepare** — for each selected project: load its config, pick version, bump files, commit, tag, push, create GitHub release.
+2. **npm publish** — batched: collects OTP once and passes it to all publishes back-to-back, solving the OTP-timeout problem.
+3. **Homebrew** — updates formulas for non-beta releases.
+
+`discoverProjects()` returns `DiscoveredProject[]` sorted by change count (most changes first). Projects with `private: true` in their `package.json` are flagged as non-npm-publishable.
 
 ### What "release branch" means
 

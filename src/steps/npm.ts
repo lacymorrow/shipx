@@ -6,9 +6,11 @@ import { errorText, exec } from "../utils.ts";
 export async function publishNpm(
 	config: ResolvedConfig,
 	isBeta: boolean,
+	otp?: string,
 ): Promise<boolean> {
 	const { cwd, access } = config.npm;
 	const baseArgs = ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
+	if (otp) baseArgs.push("--otp", otp);
 
 	const spinner = p.spinner();
 	spinner.start(`Publishing to npm${isBeta ? " (beta)" : ""}`);
@@ -49,17 +51,17 @@ export async function publishNpm(
 			continue;
 		}
 
-		const retryArgs = [...baseArgs];
+		const retryArgs = ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
 		if (action === "otp") {
-			const otp = await p.text({
+			const newOtp = await p.text({
 				message: "npm OTP",
 				placeholder: "123456",
 				validate: (v) => {
 					if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
 				},
 			});
-			if (p.isCancel(otp)) continue;
-			retryArgs.push("--otp", otp.trim());
+			if (p.isCancel(newOtp)) continue;
+			retryArgs.push("--otp", newOtp.trim());
 		}
 
 		const retrySpinner = p.spinner();

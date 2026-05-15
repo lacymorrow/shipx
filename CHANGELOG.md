@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multi-project deploy** (`--multi`): scan a parent directory for projects, detect unreleased changes, select which to release, batch npm publishes with a single OTP to avoid timeout issues.
 - Logo, social preview banner, and `media/demo.tape` for reproducible terminal demos via [VHS](https://github.com/charmbracelet/vhs).
 - Issue & pull request templates, FUNDING and dependabot config, SECURITY and CONTRIBUTING docs.
 - CI workflow: typecheck and build on Node 18 / 20 / 22.
