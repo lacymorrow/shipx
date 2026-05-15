@@ -52,7 +52,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	const spinner = p.spinner();
 	spinner.start("Scanning for projects");
-	const projects = discoverProjects(root, (scanned, found, current) => {
+	const projects = await discoverProjects(root, (scanned, found, current) => {
 		spinner.message(`Scanning: ${pc.dim(current)} ${pc.dim(`(${found} found)`)}`);
 	});
 	spinner.stop(`Found ${pc.cyan(String(projects.length))} projects`);

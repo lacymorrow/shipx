@@ -52,10 +52,14 @@ function isDirty(dir: string): boolean {
 	}
 }
 
-export function discoverProjects(
+function tick(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export async function discoverProjects(
 	parentDir: string,
 	onProgress?: (scanned: number, found: number, current: string) => void,
-): DiscoveredProject[] {
+): Promise<DiscoveredProject[]> {
 	const entries = readdirSync(parentDir);
 	const projects: DiscoveredProject[] = [];
 	let scanned = 0;
@@ -70,12 +74,13 @@ export function discoverProjects(
 			continue;
 		}
 
+		scanned++;
+		onProgress?.(scanned, projects.length, entry);
+		await tick();
+
 		const pkgPath = resolve(fullPath, "package.json");
 		if (!existsSync(pkgPath)) continue;
 		if (!isGitRepo(fullPath)) continue;
-
-		scanned++;
-		onProgress?.(scanned, projects.length, entry);
 
 		const pkg = readJson(pkgPath);
 		const dirName = basename(fullPath);
