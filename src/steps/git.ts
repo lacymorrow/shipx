@@ -23,25 +23,30 @@ export function commitAndTag(
 	const spinner = p.spinner();
 	spinner.start("Committing and tagging");
 
-	if (filesToStage.length > 0) {
-		exec("git", ["add", ...filesToStage], { cwd: config.root });
+	try {
+		if (filesToStage.length > 0) {
+			exec("git", ["add", ...filesToStage], { cwd: config.root });
+		}
+
+		const message = config.git.commitMessage.replace(/\{tag\}/g, tag);
+		exec(
+			"git",
+			["commit", "-m", message, ...splitFlags(config.git.commitFlags)],
+			{ cwd: config.root },
+		);
+		exec("git", ["tag", tag], { cwd: config.root });
+
+		const extraTags = resolveExtraTags(config, tag, newVersion);
+		for (const extraTag of extraTags) {
+			exec("git", ["tag", extraTag], { cwd: config.root });
+		}
+
+		const allTags = [tag, ...extraTags].map((t) => pc.green(t)).join(", ");
+		spinner.stop(`Committed and tagged ${allTags}`);
+	} catch (err) {
+		spinner.stop(pc.red("Commit/tag failed"));
+		throw err;
 	}
-
-	const message = config.git.commitMessage.replace(/\{tag\}/g, tag);
-	exec(
-		"git",
-		["commit", "-m", message, ...splitFlags(config.git.commitFlags)],
-		{ cwd: config.root },
-	);
-	exec("git", ["tag", tag], { cwd: config.root });
-
-	const extraTags = resolveExtraTags(config, tag, newVersion);
-	for (const extraTag of extraTags) {
-		exec("git", ["tag", extraTag], { cwd: config.root });
-	}
-
-	const allTags = [tag, ...extraTags].map((t) => pc.green(t)).join(", ");
-	spinner.stop(`Committed and tagged ${allTags}`);
 }
 
 function isRemoteAhead(err: unknown): boolean {
@@ -65,7 +70,10 @@ export async function pushChanges(
 			{ cwd: config.root },
 		);
 	} catch (err) {
-		if (!isRemoteAhead(err)) throw err;
+		if (!isRemoteAhead(err)) {
+			spinner.stop(pc.red("Push failed"));
+			throw err;
+		}
 
 		spinner.stop(pc.yellow("Remote has new commits"));
 		const pull = await p.confirm({
@@ -78,35 +86,55 @@ export async function pushChanges(
 
 		const pullSpinner = p.spinner();
 		pullSpinner.start("Pulling with rebase");
-		exec("git", ["pull", "--rebase", "origin", branch], { cwd: config.root });
-		pullSpinner.stop("Pulled successfully");
+		try {
+			exec("git", ["pull", "--rebase", "origin", branch], { cwd: config.root });
+			pullSpinner.stop("Pulled successfully");
+		} catch (pullErr) {
+			pullSpinner.stop(pc.red("Pull failed"));
+			throw pullErr;
+		}
 
 		const retrySpinner = p.spinner();
 		retrySpinner.start("Retrying push");
-		exec(
-			"git",
-			["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
-			{ cwd: config.root },
-		);
-		retrySpinner.stop("Pushed branch");
+		try {
+			exec(
+				"git",
+				["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
+				{ cwd: config.root },
+			);
+			retrySpinner.stop("Pushed branch");
+		} catch (retryErr) {
+			retrySpinner.stop(pc.red("Retry push failed"));
+			throw retryErr;
+		}
 
 		const tagSpinner = p.spinner();
 		tagSpinner.start("Pushing tags");
+		try {
+			exec("git", ["push", "origin", tag], { cwd: config.root });
+
+			const extraTags = resolveExtraTags(config, tag, newVersion);
+			for (const extraTag of extraTags) {
+				exec("git", ["push", "origin", extraTag], { cwd: config.root });
+			}
+			tagSpinner.stop("Pushed to GitHub");
+		} catch (tagErr) {
+			tagSpinner.stop(pc.red("Tag push failed"));
+			throw tagErr;
+		}
+		return;
+	}
+
+	try {
 		exec("git", ["push", "origin", tag], { cwd: config.root });
 
 		const extraTags = resolveExtraTags(config, tag, newVersion);
 		for (const extraTag of extraTags) {
 			exec("git", ["push", "origin", extraTag], { cwd: config.root });
 		}
-		tagSpinner.stop("Pushed to GitHub");
-		return;
-	}
-
-	exec("git", ["push", "origin", tag], { cwd: config.root });
-
-	const extraTags = resolveExtraTags(config, tag, newVersion);
-	for (const extraTag of extraTags) {
-		exec("git", ["push", "origin", extraTag], { cwd: config.root });
+	} catch (tagErr) {
+		spinner.stop(pc.red("Tag push failed"));
+		throw tagErr;
 	}
 
 	spinner.stop("Pushed to GitHub");
