@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
-import { exec } from "../utils.ts";
+import { exec, errorText } from "../utils.ts";
 
 function resolveExtraTags(config: ResolvedConfig, tag: string, newVersion: string): string[] {
 	const tags = config.git.extraTags.map((tpl) =>
@@ -44,20 +44,64 @@ export function commitAndTag(
 	spinner.stop(`Committed and tagged ${allTags}`);
 }
 
-export function pushChanges(
+function isRemoteAhead(err: unknown): boolean {
+	const msg = errorText(err);
+	return msg.includes("fetch first") || msg.includes("non-fast-forward");
+}
+
+export async function pushChanges(
 	config: ResolvedConfig,
 	branch: string,
 	tag: string,
 	newVersion: string,
-): void {
+): Promise<void> {
 	const spinner = p.spinner();
 	spinner.start("Pushing to GitHub");
 
-	exec(
-		"git",
-		["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
-		{ cwd: config.root },
-	);
+	try {
+		exec(
+			"git",
+			["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
+			{ cwd: config.root },
+		);
+	} catch (err) {
+		if (!isRemoteAhead(err)) throw err;
+
+		spinner.stop(pc.yellow("Remote has new commits"));
+		const pull = await p.confirm({
+			message: `Remote is ahead of local. Pull (rebase) and retry push?`,
+		});
+		if (p.isCancel(pull) || !pull) {
+			p.log.error("Push aborted — remote is ahead. Run " + pc.green("git pull --rebase") + " manually.");
+			process.exit(1);
+		}
+
+		const pullSpinner = p.spinner();
+		pullSpinner.start("Pulling with rebase");
+		exec("git", ["pull", "--rebase", "origin", branch], { cwd: config.root });
+		pullSpinner.stop("Pulled successfully");
+
+		const retrySpinner = p.spinner();
+		retrySpinner.start("Retrying push");
+		exec(
+			"git",
+			["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
+			{ cwd: config.root },
+		);
+		retrySpinner.stop("Pushed branch");
+
+		const tagSpinner = p.spinner();
+		tagSpinner.start("Pushing tags");
+		exec("git", ["push", "origin", tag], { cwd: config.root });
+
+		const extraTags = resolveExtraTags(config, tag, newVersion);
+		for (const extraTag of extraTags) {
+			exec("git", ["push", "origin", extraTag], { cwd: config.root });
+		}
+		tagSpinner.stop("Pushed to GitHub");
+		return;
+	}
+
 	exec("git", ["push", "origin", tag], { cwd: config.root });
 
 	const extraTags = resolveExtraTags(config, tag, newVersion);
