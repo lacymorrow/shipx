@@ -126,7 +126,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	let branch = "main";
 	if (config.steps.preflight) {
-		branch = runPreflight(config, isBeta);
+		branch = await runPreflight(config, isBeta);
 	}
 
 	const newVersion = await pickVersion(currentVersion, args[0], isBeta);

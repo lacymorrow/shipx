@@ -3,7 +3,7 @@ import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
 import { exec } from "../utils.ts";
 
-export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
+export async function runPreflight(config: ResolvedConfig, isBeta: boolean): Promise<string> {
 	const spinner = p.spinner();
 	spinner.start("Running preflight checks");
 
@@ -25,12 +25,32 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 		process.exit(1);
 	}
 
-	const branch = exec("git", ["branch", "--show-current"], { cwd: config.root }).trim();
+	let branch = exec("git", ["branch", "--show-current"], { cwd: config.root }).trim();
 	if (!isBeta && branch !== config.git.releaseBranch) {
 		spinner.stop(
-			pc.red(`On branch '${branch}', not '${config.git.releaseBranch}'`),
+			pc.yellow(`On branch '${branch}', not '${config.git.releaseBranch}'`),
 		);
-		process.exit(1);
+
+		const branchAction = await p.select({
+			message: `You're on '${pc.yellow(branch)}', not '${config.git.releaseBranch}'.`,
+			options: [
+				{ value: "switch" as const, label: `Switch to ${config.git.releaseBranch}`, hint: `git checkout ${config.git.releaseBranch}` },
+				{ value: "use" as const, label: `Use ${branch}`, hint: "release from current branch" },
+			],
+		});
+
+		if (p.isCancel(branchAction)) {
+			p.cancel("Release cancelled.");
+			process.exit(0);
+		}
+
+		if (branchAction === "switch") {
+			exec("git", ["checkout", config.git.releaseBranch], { cwd: config.root });
+			branch = config.git.releaseBranch;
+			p.log.success(`Switched to ${config.git.releaseBranch}`);
+		}
+
+		return branch;
 	}
 
 	spinner.stop("Preflight OK");
