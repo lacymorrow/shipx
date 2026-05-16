@@ -12,7 +12,7 @@ import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
-import { errorText } from "./utils.ts";
+import { errorText, exec } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 function loadIgnored(root: string): Set<string> {
@@ -159,10 +159,30 @@ export async function multiMain(argv: string[]): Promise<void> {
 		const config = await loadConfig(project.path);
 
 		if (!isBeta && project.branch !== config.git.releaseBranch) {
-			p.log.warn(
-				`${project.dirName} is on '${pc.yellow(project.branch)}', not '${config.git.releaseBranch}'. Skipping.`,
-			);
-			continue;
+			const branchAction = await p.select({
+				message: `${project.dirName} is on '${pc.yellow(project.branch)}', not '${config.git.releaseBranch}'.`,
+				options: [
+					{ value: "switch" as const, label: `Switch to ${config.git.releaseBranch}`, hint: `git checkout ${config.git.releaseBranch}` },
+					{ value: "use" as const, label: `Use ${project.branch}`, hint: "release from current branch" },
+					{ value: "skip" as const, label: "Skip", hint: "don't release this project" },
+				],
+			});
+
+			if (p.isCancel(branchAction) || branchAction === "skip") {
+				p.log.info(`Skipping ${project.dirName}`);
+				continue;
+			}
+
+			if (branchAction === "switch") {
+				try {
+					exec("git", ["checkout", config.git.releaseBranch], { cwd: project.path });
+					project.branch = config.git.releaseBranch;
+					p.log.success(`Switched ${project.dirName} to ${config.git.releaseBranch}`);
+				} catch (err) {
+					p.log.error(`Failed to switch branch: ${errorText(err)}`);
+					continue;
+				}
+			}
 		}
 
 		const versionArg = bumpMode === "individual" ? undefined : bumpMode;
