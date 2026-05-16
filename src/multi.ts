@@ -12,8 +12,10 @@ import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
-import { errorText, exec } from "./utils.ts";
+import { errorText, exec, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
+
+setupCleanExit();
 
 function loadIgnored(root: string): Set<string> {
 	const ignorePath = resolve(root, ".shipxignore");

@@ -14,9 +14,11 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
 import { pickVersion } from "./steps/version.ts";
-import { exec, isGitRepo, readJson } from "./utils.ts";
+import { exec, isGitRepo, readJson, setupCleanExit } from "./utils.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
+
+setupCleanExit();
 
 function getVersion(): string {
 	try {
@@ -157,6 +159,20 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (config.steps.push) {
 		await pushChanges(config, branch, tag, newVersion);
+
+		const extraTags = config.git.extraTags
+			.map((tpl) => tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion))
+			.filter((t) => t !== tag);
+		if (extraTags.length) {
+			p.log.info(`Tags: ${[tag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
+		}
+
+		const ciHandled: string[] = [];
+		if (!config.steps.githubRelease) ciHandled.push("GitHub Release");
+		if (!config.steps.homebrew) ciHandled.push("Homebrew");
+		if (ciHandled.length) {
+			p.log.info(`CI-handled (via tag push): ${ciHandled.join(", ")}`);
+		}
 	}
 
 	if (config.steps.githubRelease) {

@@ -45,6 +45,13 @@ export function isGitRepo(dir: string): boolean {
 	}
 }
 
+export function setupCleanExit(): void {
+	process.on("SIGINT", () => {
+		process.stdout.write("\x1B[?25h\n");
+		process.exit(130);
+	});
+}
+
 export function errorText(err: unknown): string {
 	if (err instanceof Error) {
 		if ("stderr" in err && typeof err.stderr === "string" && err.stderr.trim())
