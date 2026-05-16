@@ -195,7 +195,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 			}
 
 			if (config.steps.push) {
-				pushChanges(config, project.branch, tag, newVersion);
+				await pushChanges(config, project.branch, tag, newVersion);
 			}
 
 			if (config.steps.githubRelease) {

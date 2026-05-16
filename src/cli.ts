@@ -156,7 +156,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	}
 
 	if (config.steps.push) {
-		pushChanges(config, branch, tag, newVersion);
+		await pushChanges(config, branch, tag, newVersion);
 	}
 
 	if (config.steps.githubRelease) {
