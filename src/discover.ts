@@ -107,5 +107,5 @@ export async function discoverProjects(
 		});
 	}
 
-	return projects.sort((a, b) => b.changeCount - a.changeCount);
+	return projects.sort((a, b) => a.dirName.localeCompare(b.dirName));
 }
