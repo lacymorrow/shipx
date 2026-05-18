@@ -1,8 +1,9 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
 import { errorText, exec } from "../utils.ts";
@@ -41,7 +42,16 @@ export async function publishHomebrew(
 		exec("git", ["pull", "--rebase", "origin", "main"], { cwd: tapPath });
 
 		const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
-		const tarball = execFileSync("curl", ["-sL", tarballUrl]);
+		const tmpFile = join(tmpdir(), `shipx-tarball-${Date.now()}.tar.gz`);
+		try {
+			exec("curl", ["-sLo", tmpFile, tarballUrl]);
+		} catch (dlErr) {
+			spinner.stop(pc.red("Failed to download tarball"));
+			p.log.error(errorText(dlErr));
+			return;
+		}
+		const tarball = readFileSync(tmpFile);
+		try { unlinkSync(tmpFile); } catch {}
 		const sha256 = createHash("sha256").update(tarball).digest("hex");
 
 		if (!sha256 || sha256.length !== 64) {
