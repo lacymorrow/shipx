@@ -89,8 +89,8 @@ export async function publishNpm(
 		const action = await p.select({
 			message: "How would you like to proceed?",
 			options: [
-				{ value: "login" as const, label: "Log in to npm", hint: "run npm login, then retry" },
 				{ value: "otp" as const, label: "Enter OTP", hint: "publish with one-time password" },
+				{ value: "login" as const, label: "Log in to npm", hint: "run npm login, then retry" },
 				{ value: "retry" as const, label: "Retry publish", hint: "try again without OTP" },
 				{ value: "skip" as const, label: "Skip npm publish", hint: "continue to next step" },
 			],
