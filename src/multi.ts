@@ -12,7 +12,7 @@ import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
-import { errorText, exec, setupCleanExit } from "./utils.ts";
+import { branchExists, errorText, exec, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 setupCleanExit();
@@ -169,10 +169,14 @@ export async function multiMain(argv: string[]): Promise<void> {
 		}
 
 		if (!isBeta && project.branch !== config.git.releaseBranch) {
+			const canSwitch = branchExists(project.path, config.git.releaseBranch);
+			const switchOption = canSwitch
+				? [{ value: "switch" as const, label: `Switch to ${config.git.releaseBranch}`, hint: `git checkout ${config.git.releaseBranch}` }]
+				: [];
 			const branchAction = await p.select({
 				message: `${project.dirName} is on '${pc.yellow(project.branch)}', not '${config.git.releaseBranch}'.`,
 				options: [
-					{ value: "switch" as const, label: `Switch to ${config.git.releaseBranch}`, hint: `git checkout ${config.git.releaseBranch}` },
+					...switchOption,
 					{ value: "use" as const, label: `Use ${project.branch}`, hint: "release from current branch" },
 					{ value: "skip" as const, label: "Skip", hint: "don't release this project" },
 				],

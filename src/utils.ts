@@ -32,6 +32,36 @@ export function writeJson(path: string, data: Record<string, unknown>): void {
 	writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 }
 
+export function detectDefaultBranch(dir: string): string {
+	try {
+		const ref = exec("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd: dir }).trim();
+		const match = ref.match(/refs\/remotes\/origin\/(.+)/);
+		if (match) return match[1];
+	} catch {
+		// no remote or HEAD not set
+	}
+
+	try {
+		const branches = exec("git", ["branch", "--list", "main", "master"], { cwd: dir }).trim();
+		const list = branches.split("\n").map((b) => b.replace(/^\*?\s+/, "").trim()).filter(Boolean);
+		if (list.includes("main")) return "main";
+		if (list.includes("master")) return "master";
+	} catch {
+		// not a git repo
+	}
+
+	return "main";
+}
+
+export function branchExists(dir: string, branch: string): boolean {
+	try {
+		exec("git", ["rev-parse", "--verify", branch], { cwd: dir });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function isGitRepo(dir: string): boolean {
 	try {
 		execFileSync("git", ["rev-parse", "--git-dir"], {

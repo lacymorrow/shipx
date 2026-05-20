@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig, ShipConfig } from "./types.ts";
-import { exec, readJson } from "./utils.ts";
+import { detectDefaultBranch, exec, readJson } from "./utils.ts";
 
 const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	packageJsonPaths: [],
@@ -102,6 +102,10 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 		if (existsSync(resolve(srcTauri, "Cargo.toml"))) {
 			merged.cargoWorkspaces = ["src-tauri"];
 		}
+	}
+
+	if (userConfig.git?.releaseBranch === undefined) {
+		merged.git.releaseBranch = detectDefaultBranch(root);
 	}
 
 	if (!merged.homebrew.tapPath) {
