@@ -30,6 +30,10 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 		spinner.stop(
 			pc.red(`On branch '${branch}', not '${config.git.releaseBranch}'`),
 		);
+		p.log.error(
+			`Switch to ${pc.green(config.git.releaseBranch)} first, use ${pc.green("--beta")} to skip the branch check, ` +
+			`or set ${pc.cyan("git.releaseBranch")} in your shipx config.`,
+		);
 		process.exit(1);
 	}
 
