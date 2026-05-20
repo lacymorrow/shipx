@@ -45,6 +45,7 @@ interface PreparedProject {
 
 export async function multiMain(argv: string[]): Promise<void> {
 	const isBeta = argv.includes("--beta");
+	const isDraft = argv.includes("--draft");
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 
 	if (process.stdout.isTTY) {
@@ -159,6 +160,9 @@ export async function multiMain(argv: string[]): Promise<void> {
 		p.log.step(`${pc.cyan(project.dirName)} ${pc.dim(`(${project.version})`)}`);
 
 		const config = await loadConfig(project.path);
+		if (isDraft) {
+			config.github.draft = true;
+		}
 
 		if (!isBeta && project.branch !== config.git.releaseBranch) {
 			const branchAction = await p.select({

@@ -53,6 +53,11 @@ export interface ShipConfig {
 		/** npm publish access. Default: 'public' */
 		access?: "public" | "restricted";
 	};
+	/** GitHub release settings */
+	github?: {
+		/** Create the release as a draft so you can review before publishing. Default: false */
+		draft?: boolean;
+	};
 	/** Homebrew tap settings */
 	homebrew?: {
 		/** Absolute path to the homebrew tap directory */
@@ -70,6 +75,7 @@ export interface ResolvedConfig extends Required<ShipConfig> {
 	root: string;
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
 	git: Required<NonNullable<ShipConfig["git"]>>;
+	github: Required<NonNullable<ShipConfig["github"]>>;
 	npm: Required<NonNullable<ShipConfig["npm"]>>;
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
 }

@@ -26,6 +26,9 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		commitFlags: "--no-verify",
 		pushFlags: "--no-verify",
 	},
+	github: {
+		draft: false,
+	},
 	npm: {
 		cwd: "",
 		access: "public",
@@ -45,6 +48,7 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 		cargoWorkspaces: user.cargoWorkspaces ?? base.cargoWorkspaces,
 		steps: { ...base.steps, ...user.steps },
 		git: { ...base.git, ...user.git },
+		github: { ...base.github, ...user.github },
 		npm: { ...base.npm, ...user.npm },
 		homebrew: { ...base.homebrew, ...user.homebrew },
 	};
