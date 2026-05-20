@@ -1,8 +1,8 @@
 <div align="center">
   <a href="https://github.com/lacymorrow/shipx">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/lacymorrow/shipx/main/.github/assets/logo-horizontal-dark.svg">
-      <img src="https://raw.githubusercontent.com/lacymorrow/shipx/main/.github/assets/logo-horizontal.svg" alt="shipx" width="320">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/lacymorrow/shipx/HEAD/.github/assets/logo-horizontal-dark.svg">
+      <img src="https://raw.githubusercontent.com/lacymorrow/shipx/HEAD/.github/assets/logo-horizontal.svg" alt="shipx" width="320">
     </picture>
   </a>
 
@@ -16,7 +16,7 @@
     <a href="https://nodejs.org"><img alt="Node" src="https://img.shields.io/node/v/@lacymorrow/shipx?style=flat"></a>
   </p>
 
-  <img src="https://raw.githubusercontent.com/lacymorrow/shipx/main/.github/assets/demo.gif" alt="shipx running an interactive release in the terminal" width="900">
+  <img src="https://raw.githubusercontent.com/lacymorrow/shipx/HEAD/.github/assets/demo.gif" alt="shipx running an interactive release in the terminal" width="900">
 </div>
 
 ---
