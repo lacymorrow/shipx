@@ -1,6 +1,6 @@
 {
   "name": "@lacymorrow/shipx",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Interactive release CLI — bump, tag, publish, and ship your packages with a beautiful terminal UI",
   "type": "module",
   "bin": {
