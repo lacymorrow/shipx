@@ -47,6 +47,7 @@ ${pc.bold("COMMANDS")}
 
 ${pc.bold("OPTIONS")}
   ${pc.yellow("--beta")}             Create a beta pre-release (-beta.N)
+  ${pc.yellow("--draft")}            Create GitHub release as draft (review before publishing)
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
   ${pc.yellow("--help, -h")}         Show this help message
   ${pc.yellow("--version, -v")}      Print version
@@ -81,10 +82,15 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	}
 
 	const isBeta = argv.includes("--beta");
-	const args = argv.filter((a) => a !== "--beta");
+	const isDraft = argv.includes("--draft");
+	const args = argv.filter((a) => a !== "--beta" && a !== "--draft");
 
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 	const config = await loadConfig(root);
+
+	if (isDraft) {
+		config.github.draft = true;
+	}
 
 	const pkgJsonPaths = config.packageJsonPaths.map((rel) =>
 		resolve(root, rel),
