@@ -3,7 +3,7 @@ import pc from "picocolors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
-import { discoverProjects, type DiscoveredProject } from "./discover.ts";
+import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
@@ -55,10 +55,14 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	const spinner = p.spinner();
 	spinner.start("Scanning for projects");
-	const projects = await discoverProjects(root, (scanned, found, current) => {
+	const { projects, skipped } = await discoverProjects(root, (scanned, found, current) => {
 		spinner.message(`Scanning: ${pc.dim(current)} ${pc.dim(`(${found} found)`)}`);
 	});
 	spinner.stop(`Found ${pc.cyan(String(projects.length))} projects`);
+
+	if (skipped.length) {
+		p.log.warn(`Skipped ${skipped.length} project${skipped.length === 1 ? "" : "s"} with unreadable package.json: ${pc.dim(skipped.join(", "))}`);
+	}
 
 	if (!projects.length) {
 		p.log.error("No deployable projects found. Run from a directory containing project subdirectories.");
