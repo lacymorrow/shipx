@@ -56,12 +56,18 @@ function tick(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+export interface DiscoverResult {
+	projects: DiscoveredProject[];
+	skipped: string[];
+}
+
 export async function discoverProjects(
 	parentDir: string,
 	onProgress?: (scanned: number, found: number, current: string) => void,
-): Promise<DiscoveredProject[]> {
+): Promise<DiscoverResult> {
 	const entries = readdirSync(parentDir);
 	const projects: DiscoveredProject[] = [];
+	const skipped: string[] = [];
 	let scanned = 0;
 
 	for (const entry of entries) {
@@ -82,7 +88,14 @@ export async function discoverProjects(
 		if (!existsSync(pkgPath)) continue;
 		if (!isGitRepo(fullPath)) continue;
 
-		const pkg = readJson(pkgPath);
+		let pkg: Record<string, unknown>;
+		try {
+			pkg = readJson(pkgPath);
+		} catch {
+			skipped.push(entry);
+			continue;
+		}
+
 		const dirName = basename(fullPath);
 		const name = (typeof pkg.name === "string" ? pkg.name : dirName);
 		const version = (typeof pkg.version === "string" ? pkg.version : "0.0.0");
@@ -107,5 +120,8 @@ export async function discoverProjects(
 		});
 	}
 
-	return projects.sort((a, b) => a.dirName.localeCompare(b.dirName));
+	return {
+		projects: projects.sort((a, b) => a.dirName.localeCompare(b.dirName)),
+		skipped,
+	};
 }
