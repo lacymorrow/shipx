@@ -91,6 +91,9 @@ export async function discoverProjects(
 		let pkg: Record<string, unknown>;
 		try {
 			pkg = readJson(pkgPath);
+			if (!pkg || typeof pkg !== "object") {
+				throw new Error();
+			}
 		} catch {
 			skipped.push(entry);
 			continue;
