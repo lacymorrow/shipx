@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pull-rebase with dirty trees**: when push rejection triggers `git pull --rebase` and the working tree still has unstaged changes (e.g. preflight warned but the user continued), shipx now stashes the dirty files (including untracked) before pulling and restores them afterward, instead of failing with `cannot pull with rebase: You have unstaged changes`. [LAC-1950]
+
 ### Added
 
 - **Archived repo detection**: preflight (single mode) and discovery (multi mode) now check whether the GitHub remote is archived via `gh repo view --json isArchived`. Archived repos abort with a clear error before any local changes; in `--multi` they are filtered out of the selection list with a warning. [LAC-1949]
