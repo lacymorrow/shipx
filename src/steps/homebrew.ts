@@ -11,6 +11,7 @@ import { errorText, exec } from "../utils.ts";
 export async function publishHomebrew(
 	config: ResolvedConfig,
 	tag: string,
+	options?: { skipConfirm?: boolean },
 ): Promise<void> {
 	const { tapPath, formulaFile, repoSlug, commitMessage } = config.homebrew;
 
@@ -25,13 +26,15 @@ export async function publishHomebrew(
 		return;
 	}
 
-	const doHomebrew = await p.confirm({
-		message: "Update Homebrew formula?",
-		initialValue: true,
-	});
-	if (p.isCancel(doHomebrew) || !doHomebrew) {
-		p.log.info("Skipping Homebrew");
-		return;
+	if (!options?.skipConfirm) {
+		const doHomebrew = await p.confirm({
+			message: "Update Homebrew formula?",
+			initialValue: true,
+		});
+		if (p.isCancel(doHomebrew) || !doHomebrew) {
+			p.log.info("Skipping Homebrew");
+			return;
+		}
 	}
 
 	const spinner = p.spinner();
