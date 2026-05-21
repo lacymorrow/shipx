@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Archived repo detection**: preflight (single mode) and discovery (multi mode) now check whether the GitHub remote is archived via `gh repo view --json isArchived`. Archived repos abort with a clear error before any local changes; in `--multi` they are filtered out of the selection list with a warning. [LAC-1949]
 - **Pull-and-retry on push rejection**: when `git push` fails because the remote is ahead, shipx now offers to `git pull --rebase` and retry instead of aborting.
 - **Multi-project deploy** (`--multi`): scan a parent directory for projects, detect unreleased changes, select which to release, batch npm publishes with a single OTP to avoid timeout issues.
 - Logo, social preview banner, and `media/demo.tape` for reproducible terminal demos via [VHS](https://github.com/charmbracelet/vhs).
