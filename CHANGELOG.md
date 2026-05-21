@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **npm registry version check**: before prompting for a bump, shipx now queries `npm view <pkg> version` and — if the registry is ahead of the local `package.json` — warns the user and offers to use the registry version as the bump base. Prevents the `Cannot implicitly apply the "latest" tag because previously published version X.Y.Z is higher than the new version` publish failure when local state has drifted behind the registry. Applies to both single mode and `--multi`; skipped for private packages and when the npm step is disabled. [LAC-1951]
+
 ### Fixed
 
 - **Pull-rebase with dirty trees**: when push rejection triggers `git pull --rebase` and the working tree still has unstaged changes (e.g. preflight warned but the user continued), shipx now stashes the dirty files (including untracked) before pulling and restores them afterward, instead of failing with `cannot pull with rebase: You have unstaged changes`. [LAC-1950]

@@ -14,6 +14,7 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
 import { pickVersion } from "./steps/version.ts";
+import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, readJson, setupCleanExit } from "./utils.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
@@ -135,11 +136,22 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		branch = runPreflight(config, isBeta);
 	}
 
-	const newVersion = await pickVersion(currentVersion, args[0], isBeta);
+	let baseVersion = currentVersion;
+	const isPrivate = rootPkg.private === true;
+	if (config.steps.npm && !isPrivate && typeof rootPkg.name === "string") {
+		baseVersion = await reconcileRegistryVersion(
+			rootPkg.name,
+			currentVersion,
+			config.npm.cwd,
+			{ displayName: projectName },
+		);
+	}
+
+	const newVersion = await pickVersion(baseVersion, args[0], isBeta);
 	const tag = `${config.git.tagPrefix}${newVersion}`;
 
 	const proceed = await p.confirm({
-		message: `Release ${pc.cyan(currentVersion)} → ${pc.green(newVersion)} (${tag})?`,
+		message: `Release ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${tag})?`,
 	});
 	if (p.isCancel(proceed) || !proceed) {
 		p.cancel("Release cancelled.");
