@@ -62,6 +62,34 @@ export function branchExists(dir: string, branch: string): boolean {
 	}
 }
 
+export function getGithubSlug(dir: string): string | null {
+	try {
+		const remote = exec("git", ["remote", "get-url", "origin"], { cwd: dir }).trim();
+		const match = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+		if (match) return `${match[1]}/${match[2]}`;
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Returns true if the repo's GitHub remote is archived, false if not, null if undetectable
+ * (no GitHub remote, `gh` not installed, not authenticated, repo not found, etc).
+ * Callers should treat `null` as "can't tell — proceed" rather than a hard failure.
+ */
+export function isRepoArchived(dir: string): boolean | null {
+	const slug = getGithubSlug(dir);
+	if (!slug) return null;
+	try {
+		const output = exec("gh", ["repo", "view", slug, "--json", "isArchived"], { cwd: dir });
+		const data = JSON.parse(output) as { isArchived?: boolean };
+		return data.isArchived === true;
+	} catch {
+		return null;
+	}
+}
+
 export function isGitRepo(dir: string): boolean {
 	try {
 		execFileSync("git", ["rev-parse", "--git-dir"], {

@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
-import { exec } from "../utils.ts";
+import { exec, isRepoArchived } from "../utils.ts";
 
 export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 	const spinner = p.spinner();
@@ -33,6 +33,15 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 		p.log.error(
 			`Switch to ${pc.green(config.git.releaseBranch)} first, use ${pc.green("--beta")} to skip the branch check, ` +
 			`or set ${pc.cyan("git.releaseBranch")} in your shipx config.`,
+		);
+		process.exit(1);
+	}
+
+	if (isRepoArchived(config.root) === true) {
+		spinner.stop(pc.red("Repository is archived (read-only)"));
+		p.log.error(
+			"The GitHub repository is archived — pushes will be rejected. " +
+			`Unarchive it on GitHub or remove the project from shipx before retrying.`,
 		);
 		process.exit(1);
 	}

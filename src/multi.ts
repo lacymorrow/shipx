@@ -84,22 +84,38 @@ export async function multiMain(argv: string[]): Promise<void> {
 		p.log.info(`${pc.dim(String(ignored.size))} projects in .shipxignore`);
 	}
 
-	const options = projects.map((proj) => {
-		const changes = proj.changeCount > 0
-			? pc.yellow(`${proj.changeCount} new commit${proj.changeCount === 1 ? "" : "s"}`)
-			: pc.dim("no changes");
-		const dirtyFlag = proj.dirty ? pc.red(" [dirty]") : "";
-		const npmFlag = proj.hasNpm ? "" : pc.dim(" (private)");
-		const nameNote = proj.name !== proj.dirName ? pc.dim(` [${proj.name}]`) : "";
-		return {
-			value: proj.path,
-			label: `${proj.dirName}${npmFlag}${nameNote}`,
-			hint: `${pc.dim(proj.version)} · ${changes}${dirtyFlag}`,
-		};
-	});
+	const archived = projects.filter((proj) => proj.archived);
+	if (archived.length) {
+		p.log.warn(
+			`${pc.yellow(String(archived.length))} archived repo${archived.length === 1 ? "" : "s"} will be skipped (read-only on GitHub): ` +
+			archived.map((proj) => pc.dim(proj.dirName)).join(", "),
+		);
+	}
+
+	const options = projects
+		.filter((proj) => !proj.archived)
+		.map((proj) => {
+			const changes = proj.changeCount > 0
+				? pc.yellow(`${proj.changeCount} new commit${proj.changeCount === 1 ? "" : "s"}`)
+				: pc.dim("no changes");
+			const dirtyFlag = proj.dirty ? pc.red(" [dirty]") : "";
+			const npmFlag = proj.hasNpm ? "" : pc.dim(" (private)");
+			const nameNote = proj.name !== proj.dirName ? pc.dim(` [${proj.name}]`) : "";
+			return {
+				value: proj.path,
+				label: `${proj.dirName}${npmFlag}${nameNote}`,
+				hint: `${pc.dim(proj.version)} · ${changes}${dirtyFlag}`,
+			};
+		});
+
+	if (!options.length) {
+		p.log.info("No deployable projects after filtering archived repos.");
+		p.outro(pc.dim("Nothing to do."));
+		return;
+	}
 
 	const preSelected = withChanges
-		.filter((proj) => !ignored.has(proj.dirName))
+		.filter((proj) => !proj.archived && !ignored.has(proj.dirName))
 		.map((proj) => proj.path);
 
 	const selected = await p.multiselect({

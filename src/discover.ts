@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { exec, isGitRepo, readJson } from "./utils.ts";
+import { exec, isGitRepo, isRepoArchived, readJson } from "./utils.ts";
 
 export interface DiscoveredProject {
 	/** npm package name from package.json */
@@ -15,6 +15,7 @@ export interface DiscoveredProject {
 	lastTag: string;
 	branch: string;
 	dirty: boolean;
+	archived: boolean;
 }
 
 function getLastTag(dir: string): string {
@@ -108,6 +109,7 @@ export async function discoverProjects(
 		const changeCount = getCommitsSinceTag(fullPath, lastTag);
 		const branch = getCurrentBranch(fullPath);
 		const dirty = isDirty(fullPath);
+		const archived = isRepoArchived(fullPath) === true;
 
 		projects.push({
 			name,
@@ -120,6 +122,7 @@ export async function discoverProjects(
 			lastTag,
 			branch,
 			dirty,
+			archived,
 		});
 	}
 
