@@ -310,7 +310,8 @@ export async function multiMain(argv: string[]): Promise<void> {
 	if (brewProjects.length) {
 		p.log.step(pc.bold("Phase 3: Homebrew"));
 		for (const pp of brewProjects) {
-			await publishHomebrew(pp.config, pp.tag);
+			p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
+			await publishHomebrew(pp.config, pp.tag, { skipConfirm: true });
 		}
 	}
 
