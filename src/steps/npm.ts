@@ -53,8 +53,9 @@ async function ensureNpmAuth(cwd?: string): Promise<boolean> {
 	return false;
 }
 
-function publishArgs(access: string, isBeta: boolean): string[] {
-	return ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
+function publishArgs(access: string, isBeta: boolean, distTag?: string): string[] {
+	const tag = distTag ?? (isBeta ? "beta" : undefined);
+	return ["publish", "--access", access, ...(tag ? ["--tag", tag] : [])];
 }
 
 function tryWebPublish(args: string[], cwd?: string): boolean {
@@ -69,7 +70,7 @@ function tryWebPublish(args: string[], cwd?: string): boolean {
 export async function publishNpm(
 	config: ResolvedConfig,
 	isBeta: boolean,
-	opts?: { otp?: string; webAuth?: boolean },
+	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
 ): Promise<boolean> {
 	const { cwd, access } = config.npm;
 
@@ -84,7 +85,7 @@ export async function publishNpm(
 		}
 	}
 
-	const baseArgs = publishArgs(access, isBeta);
+	const baseArgs = publishArgs(access, isBeta, opts?.distTag);
 
 	if (opts?.webAuth) {
 		p.log.info("Publishing to npm with browser authentication…");

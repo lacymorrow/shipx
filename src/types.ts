@@ -18,6 +18,8 @@ export interface ShipConfig {
 	/** Steps to run (all enabled by default) */
 	steps?: {
 		preflight?: boolean;
+		test?: boolean;
+		cleanup?: boolean;
 		changelog?: boolean;
 		bumpVersion?: boolean;
 		commit?: boolean;
@@ -27,6 +29,8 @@ export interface ShipConfig {
 		npm?: boolean;
 		homebrew?: boolean;
 	};
+	/** Test script to run. Default: 'test' (runs via npm/bun test) */
+	testScript?: string;
 	/** Git settings */
 	git?: {
 		/** Branch that must be current for stable releases. Default: 'main' */
@@ -73,6 +77,9 @@ export interface ShipConfig {
 
 export interface ResolvedConfig extends Required<ShipConfig> {
 	root: string;
+	dryRun: boolean;
+	anyBranch: boolean;
+	tag: string;
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
 	git: Required<NonNullable<ShipConfig["git"]>>;
 	github: Required<NonNullable<ShipConfig["github"]>>;

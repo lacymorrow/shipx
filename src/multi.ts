@@ -47,12 +47,19 @@ interface PreparedProject {
 export async function multiMain(argv: string[]): Promise<void> {
 	const isBeta = argv.includes("--beta");
 	const isDraft = argv.includes("--draft");
+	const isDryRun = argv.includes("--dry-run");
+	const isAnyBranch = argv.includes("--any-branch");
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 
 	if (process.stdout.isTTY) {
 		console.clear();
 	}
-	p.intro(pc.magenta(pc.bold("  shipx — Multi-Project Deploy  ")));
+	const modeLabel = isDryRun ? " (Dry Run)" : "";
+	p.intro(pc.magenta(pc.bold(`  shipx — Multi-Project Deploy${modeLabel}  `)));
+
+	if (isDryRun) {
+		p.log.info(pc.dim("Dry-run mode — no changes will be made"));
+	}
 
 	const spinner = p.spinner();
 	spinner.start("Scanning for projects");
@@ -181,11 +188,11 @@ export async function multiMain(argv: string[]): Promise<void> {
 		p.log.step(`${pc.cyan(project.dirName)} ${pc.dim(`(${project.version})`)}`);
 
 		const config = await loadConfig(project.path);
-		if (isDraft) {
-			config.github.draft = true;
-		}
+		if (isDraft) config.github.draft = true;
+		if (isDryRun) config.dryRun = true;
+		if (isAnyBranch) config.anyBranch = true;
 
-		if (!isBeta && project.branch !== config.git.releaseBranch) {
+		if (!isBeta && !isAnyBranch && project.branch !== config.git.releaseBranch) {
 			const canSwitch = branchExists(project.path, config.git.releaseBranch);
 			const switchOption = canSwitch
 				? [{ value: "switch" as const, label: `Switch to ${config.git.releaseBranch}`, hint: `git checkout ${config.git.releaseBranch}` }]
@@ -241,26 +248,47 @@ export async function multiMain(argv: string[]): Promise<void> {
 		try {
 			let cargoStageDirs: string[] = [];
 			if (config.steps.bumpVersion) {
-				bumpVersionFiles(config, newVersion);
-				cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+				if (isDryRun) {
+					const files = [...config.packageJsonPaths, ...config.bumpFiles.map((f: { path: string }) => f.path)];
+					p.log.info(`${pc.dim("[dry-run]")} Would bump: ${files.map((f: string) => pc.cyan(f)).join(", ")}`);
+				} else {
+					bumpVersionFiles(config, newVersion);
+					cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+				}
 			}
 
 			let changelog = `- Release ${tag}`;
 			if (config.steps.changelog) {
-				changelog = generateChangelog(config, tag);
+				if (isDryRun) {
+					p.log.info(`${pc.dim("[dry-run]")} Would generate changelog`);
+				} else {
+					changelog = generateChangelog(config, tag);
+				}
 			}
 
 			if (config.steps.commit || config.steps.tag) {
-				const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
-				commitAndTag(config, tag, newVersion, filesToStage);
+				if (isDryRun) {
+					p.log.info(`${pc.dim("[dry-run]")} Would commit and tag ${pc.green(tag)}`);
+				} else {
+					const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
+					commitAndTag(config, tag, newVersion, filesToStage);
+				}
 			}
 
 			if (config.steps.push) {
-				await pushChanges(config, project.branch, tag, newVersion);
+				if (isDryRun) {
+					p.log.info(`${pc.dim("[dry-run]")} Would push to origin`);
+				} else {
+					await pushChanges(config, project.branch, tag, newVersion);
+				}
 			}
 
 			if (config.steps.githubRelease) {
-				createGithubRelease(config, tag, changelog, isBeta);
+				if (isDryRun) {
+					p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release`);
+				} else {
+					createGithubRelease(config, tag, changelog, isBeta);
+				}
 			}
 
 			prepared.push({ project, config, newVersion, tag, changelog, isBeta });
@@ -284,57 +312,64 @@ export async function multiMain(argv: string[]): Promise<void> {
 	const npmProjects = prepared.filter((pp) => pp.config.steps.npm && pp.project.hasNpm);
 
 	if (npmProjects.length) {
-		p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
-
-		const authMethod = await p.select({
-			message: "npm authentication method",
-			options: [
-				{ value: "web" as const, label: "Web auth (passkey)", hint: "authenticate in browser" },
-				{ value: "otp" as const, label: "Enter OTP code", hint: "reuse one OTP for all packages" },
-				{ value: "none" as const, label: "No auth needed", hint: "token already configured" },
-			],
-		});
-
-		if (!p.isCancel(authMethod)) {
-			let otp: string | undefined;
-			const webAuth = authMethod === "web";
-
-			if (authMethod === "otp") {
-				if (npmProjects.length > 1) {
-					p.log.info(
-						`Publishing ${pc.cyan(String(npmProjects.length))} packages. ` +
-						`Enter your OTP once — it'll be reused for all publishes.`,
-					);
-				}
-				const otpInput = await p.text({
-					message: "npm OTP (will be used for all packages)",
-					placeholder: "123456",
-					validate: (v) => {
-						if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
-					},
-				});
-				if (!p.isCancel(otpInput)) {
-					otp = otpInput.trim();
-				}
-			}
-
-			const results: { name: string; success: boolean }[] = [];
-
+		if (isDryRun) {
+			p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
 			for (const pp of npmProjects) {
-				p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
-				const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth });
-				if (!success && otp) otp = undefined;
-				results.push({ name: pp.project.dirName, success });
+				p.log.info(`${pc.dim("[dry-run]")} Would publish ${pc.cyan(pp.project.dirName)}`);
 			}
+		} else {
+			p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
 
-			const succeeded = results.filter((r) => r.success);
-			const failed = results.filter((r) => !r.success);
+			const authMethod = await p.select({
+				message: "npm authentication method",
+				options: [
+					{ value: "web" as const, label: "Web auth (passkey)", hint: "authenticate in browser" },
+					{ value: "otp" as const, label: "Enter OTP code", hint: "reuse one OTP for all packages" },
+					{ value: "none" as const, label: "No auth needed", hint: "token already configured" },
+				],
+			});
 
-			if (succeeded.length) {
-				p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
-			}
-			if (failed.length) {
-				p.log.warn(`Skipped/failed: ${failed.map((r) => pc.yellow(r.name)).join(", ")}`);
+			if (!p.isCancel(authMethod)) {
+				let otp: string | undefined;
+				const webAuth = authMethod === "web";
+
+				if (authMethod === "otp") {
+					if (npmProjects.length > 1) {
+						p.log.info(
+							`Publishing ${pc.cyan(String(npmProjects.length))} packages. ` +
+							`Enter your OTP once — it'll be reused for all publishes.`,
+						);
+					}
+					const otpInput = await p.text({
+						message: "npm OTP (will be used for all packages)",
+						placeholder: "123456",
+						validate: (v) => {
+							if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+						},
+					});
+					if (!p.isCancel(otpInput)) {
+						otp = otpInput.trim();
+					}
+				}
+
+				const results: { name: string; success: boolean }[] = [];
+
+				for (const pp of npmProjects) {
+					p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
+					const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth });
+					if (!success && otp) otp = undefined;
+					results.push({ name: pp.project.dirName, success });
+				}
+
+				const succeeded = results.filter((r) => r.success);
+				const failed = results.filter((r) => !r.success);
+
+				if (succeeded.length) {
+					p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
+				}
+				if (failed.length) {
+					p.log.warn(`Skipped/failed: ${failed.map((r) => pc.yellow(r.name)).join(", ")}`);
+				}
 			}
 		}
 	}
@@ -342,16 +377,24 @@ export async function multiMain(argv: string[]): Promise<void> {
 	// Phase 3: Homebrew (non-beta only)
 	const brewProjects = prepared.filter((pp) => pp.config.steps.homebrew && !pp.isBeta);
 	if (brewProjects.length) {
-		p.log.step(pc.bold("Phase 3: Homebrew"));
-		for (const pp of brewProjects) {
-			p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
-			await publishHomebrew(pp.config, pp.tag, { skipConfirm: true });
+		if (isDryRun) {
+			p.log.step(pc.bold("Phase 3: Homebrew"));
+			for (const pp of brewProjects) {
+				p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew for ${pc.cyan(pp.project.dirName)}`);
+			}
+		} else {
+			p.log.step(pc.bold("Phase 3: Homebrew"));
+			for (const pp of brewProjects) {
+				p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
+				await publishHomebrew(pp.config, pp.tag, { skipConfirm: true });
+			}
 		}
 	}
 
 	// Summary
+	const dryRunPrefix = isDryRun ? `${pc.dim("[dry-run]")} Would release` : "Released";
 	const summary = prepared
 		.map((pp) => `${pc.green("✓")} ${pp.project.dirName} ${pc.green(pp.tag)}`)
 		.join("\n  ");
-	p.outro(`Released ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}:\n  ${summary}`);
+	p.outro(`${dryRunPrefix} ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}:\n  ${summary}`);
 }

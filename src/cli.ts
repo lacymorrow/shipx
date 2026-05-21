@@ -8,11 +8,13 @@ import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
+import { runCleanup } from "./steps/cleanup.ts";
 import { createGithubRelease } from "./steps/github.ts";
 import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
+import { runTests } from "./steps/test.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, readJson, setupCleanExit } from "./utils.ts";
@@ -49,6 +51,11 @@ ${pc.bold("COMMANDS")}
 ${pc.bold("OPTIONS")}
   ${pc.yellow("--beta")}             Create a beta pre-release (-beta.N)
   ${pc.yellow("--draft")}            Create GitHub release as draft (review before publishing)
+  ${pc.yellow("--dry-run")}          Preview all steps without executing
+  ${pc.yellow("--tag <name>")}       Publish with a custom dist-tag (e.g. next, canary, rc)
+  ${pc.yellow("--any-branch")}       Allow releasing from any branch, not just the release branch
+  ${pc.yellow("--no-tests")}         Skip the test step
+  ${pc.yellow("--no-cleanup")}       Skip the cleanup (reinstall) step
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
   ${pc.yellow("--help, -h")}         Show this help message
   ${pc.yellow("--version, -v")}      Print version
@@ -65,6 +72,42 @@ ${pc.bold("CONFIG")}
 
 ${pc.dim("https://github.com/lacymorrow/shipx")}
 `);
+}
+
+function parseFlag(argv: string[], flag: string): string | undefined {
+	const idx = argv.indexOf(flag);
+	if (idx === -1 || idx === argv.length - 1) return undefined;
+	return argv[idx + 1];
+}
+
+function rollbackRelease(root: string, tag: string, extraTags: string[], wasPushed: boolean): void {
+	p.log.warn("Rolling back release…");
+
+	const allTags = [tag, ...extraTags];
+
+	for (const t of allTags) {
+		try {
+			exec("git", ["tag", "-d", t], { cwd: root });
+		} catch {
+			// tag may not exist
+		}
+	}
+
+	try {
+		exec("git", ["reset", "--soft", "HEAD~1"], { cwd: root });
+		p.log.info("Rolled back locally: removed tag(s) and undid release commit");
+	} catch {
+		p.log.error("Failed to reset commit — you may need to clean up manually");
+		return;
+	}
+
+	if (wasPushed) {
+		p.log.warn("Tags and commit were already pushed to remote. Clean up manually:");
+		for (const t of allTags) {
+			p.log.message(`  ${pc.dim(`git push origin :refs/tags/${t}`)}`);
+		}
+		p.log.message(`  ${pc.dim("git push --force-with-lease origin HEAD")}`);
+	}
 }
 
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -84,14 +127,32 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	const isBeta = argv.includes("--beta");
 	const isDraft = argv.includes("--draft");
-	const args = argv.filter((a) => a !== "--beta" && a !== "--draft");
+	const isDryRun = argv.includes("--dry-run");
+	const isAnyBranch = argv.includes("--any-branch");
+	const noTests = argv.includes("--no-tests");
+	const noCleanup = argv.includes("--no-cleanup");
+	const customTag = parseFlag(argv, "--tag");
+	if (argv.includes("--tag") && !customTag) {
+		p.log.error("--tag requires a value (e.g. --tag next)");
+		process.exit(1);
+	}
+
+	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup"];
+	let args = argv.filter((a) => !filteredFlags.includes(a));
+	if (customTag) {
+		const tagIdx = args.indexOf("--tag");
+		if (tagIdx !== -1) args.splice(tagIdx, 2);
+	}
 
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 	const config = await loadConfig(root);
 
-	if (isDraft) {
-		config.github.draft = true;
-	}
+	if (isDraft) config.github.draft = true;
+	if (isDryRun) config.dryRun = true;
+	if (isAnyBranch) config.anyBranch = true;
+	if (customTag) config.tag = customTag;
+	if (noTests) config.steps.test = false;
+	if (noCleanup) config.steps.cleanup = false;
 
 	const pkgJsonPaths = config.packageJsonPaths.map((rel) =>
 		resolve(root, rel),
@@ -108,7 +169,6 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(1);
 	}
 
-	// Use the package name from package.json, stripping any npm scope prefix
 	let projectName = "shipx";
 	if (typeof rootPkg.name === "string") {
 		projectName = rootPkg.name.replace(/^@[^/]+\//, "");
@@ -125,103 +185,179 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (process.stdout.isTTY) {
 		console.clear();
 	}
+
+	const modeLabel = [
+		isBeta ? "Beta" : null,
+		isDryRun ? "Dry Run" : null,
+	].filter(Boolean).join(" · ");
+	const subtitle = modeLabel ? ` — ${modeLabel}` : "";
+
 	p.intro(
 		pc.magenta(
-			pc.bold(isBeta ? `  ${projectName} — Beta Release  ` : `  ${projectName} — Release  `),
+			pc.bold(`  ${projectName} — Release${subtitle}  `),
 		),
 	);
+
+	if (isDryRun) {
+		p.log.info(pc.dim("Dry-run mode — no changes will be made"));
+	}
 
 	let branch = "main";
 	if (config.steps.preflight) {
 		branch = runPreflight(config, isBeta);
 	}
 
+	if (config.steps.cleanup) {
+		runCleanup(config);
+	}
+
+	if (config.steps.test) {
+		runTests(config);
+	}
+
 	let baseVersion = currentVersion;
 	const isPrivate = rootPkg.private === true;
 	if (config.steps.npm && !isPrivate && typeof rootPkg.name === "string") {
-		baseVersion = await reconcileRegistryVersion(
-			rootPkg.name,
-			currentVersion,
-			config.npm.cwd,
-			{ displayName: projectName },
-		);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would check npm registry for ${pc.cyan(projectName)}`);
+		} else {
+			baseVersion = await reconcileRegistryVersion(
+				rootPkg.name,
+				currentVersion,
+				config.npm.cwd,
+				{ displayName: projectName },
+			);
+		}
 	}
 
 	const newVersion = await pickVersion(baseVersion, args[0], isBeta);
-	const tag = `${config.git.tagPrefix}${newVersion}`;
+	const gitTag = `${config.git.tagPrefix}${newVersion}`;
+
+	const distTag = customTag ?? (isBeta ? "beta" : "latest");
+	const distTagDisplay = distTag !== "latest" ? ` (dist-tag: ${pc.yellow(distTag)})` : "";
 
 	const proceed = await p.confirm({
-		message: `Release ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${tag})?`,
+		message: `Release ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${gitTag})${distTagDisplay}?`,
 	});
 	if (p.isCancel(proceed) || !proceed) {
 		p.cancel("Release cancelled.");
 		process.exit(0);
 	}
 
-	// Bump package.json and Cargo.toml files
 	let cargoStageDirs: string[] = [];
 	if (config.steps.bumpVersion) {
-		bumpVersionFiles(config, newVersion);
-		cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+		if (isDryRun) {
+			const files = [...config.packageJsonPaths, ...config.bumpFiles.map((f) => f.path)];
+			p.log.info(`${pc.dim("[dry-run]")} Would bump version in: ${files.map((f) => pc.cyan(f)).join(", ")}`);
+			if (config.cargoWorkspaces.length) {
+				p.log.info(`${pc.dim("[dry-run]")} Would bump Cargo workspaces: ${config.cargoWorkspaces.map((d) => pc.cyan(d)).join(", ")}`);
+			}
+		} else {
+			bumpVersionFiles(config, newVersion);
+			cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+		}
 	}
 
-	let changelog = `- Release ${tag}`;
+	let changelog = `- Release ${gitTag}`;
 	if (config.steps.changelog) {
-		changelog = generateChangelog(config, tag);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would generate changelog from commits since last tag`);
+		} else {
+			changelog = generateChangelog(config, gitTag);
+		}
 	}
+
+	const extraTags = config.git.extraTags
+		.map((tpl) => tpl.replace(/\{tag\}/g, gitTag).replace(/\{version\}/g, newVersion))
+		.filter((t) => t !== gitTag);
 
 	if (config.steps.commit || config.steps.tag) {
-		const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
-		commitAndTag(config, tag, newVersion, filesToStage);
+		if (isDryRun) {
+			const allTags = [gitTag, ...extraTags].map((t) => pc.green(t)).join(", ");
+			p.log.info(`${pc.dim("[dry-run]")} Would commit and tag: ${allTags}`);
+		} else {
+			const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
+			commitAndTag(config, gitTag, newVersion, filesToStage);
+		}
 	}
 
+	let wasPushed = false;
 	if (config.steps.push) {
-		await pushChanges(config, branch, tag, newVersion);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would push branch ${pc.cyan(branch)} and tag(s) to origin`);
+		} else {
+			await pushChanges(config, branch, gitTag, newVersion);
+			wasPushed = true;
 
-		const extraTags = config.git.extraTags
-			.map((tpl) => tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion))
-			.filter((t) => t !== tag);
-		if (extraTags.length) {
-			p.log.info(`Tags: ${[tag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
-		}
+			if (extraTags.length) {
+				p.log.info(`Tags: ${[gitTag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
+			}
 
-		const ciHandled: string[] = [];
-		if (!config.steps.githubRelease) ciHandled.push("GitHub Release");
-		if (!config.steps.homebrew) ciHandled.push("Homebrew");
-		if (ciHandled.length) {
-			p.log.info(`CI-handled (via tag push): ${ciHandled.join(", ")}`);
+			const ciHandled: string[] = [];
+			if (!config.steps.githubRelease) ciHandled.push("GitHub Release");
+			if (!config.steps.homebrew) ciHandled.push("Homebrew");
+			if (ciHandled.length) {
+				p.log.info(`CI-handled (via tag push): ${ciHandled.join(", ")}`);
+			}
 		}
 	}
 
 	if (config.steps.githubRelease) {
-		createGithubRelease(config, tag, changelog, isBeta);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${config.github.draft ? " (draft)" : ""}`);
+		} else {
+			createGithubRelease(config, gitTag, changelog, isBeta);
+		}
 	}
 
 	if (config.steps.npm) {
-		await publishNpm(config, isBeta);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.access}, tag=${distTag}`);
+		} else {
+			const published = await publishNpm(config, isBeta, { distTag: customTag });
+			if (!published && (config.steps.commit || config.steps.tag)) {
+				const doRollback = await p.confirm({
+					message: "npm publish failed. Roll back the release commit and tag?",
+					initialValue: true,
+				});
+				if (!p.isCancel(doRollback) && doRollback) {
+					rollbackRelease(root, gitTag, extraTags, wasPushed);
+					p.outro(pc.yellow("Release rolled back."));
+					return;
+				}
+			}
+		}
 	}
 
 	if (config.steps.homebrew && !isBeta) {
-		await publishHomebrew(config, tag);
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula`);
+		} else {
+			await publishHomebrew(config, gitTag);
+		}
 	} else if (isBeta && config.steps.homebrew) {
 		p.log.info("Skipping Homebrew for beta release");
 	}
 
-	let releaseUrl = `${tag}`;
+	let releaseUrl = `${gitTag}`;
 	try {
 		const remote = exec("git", ["remote", "get-url", "origin"], { cwd: root }).trim();
 		const match = remote.match(/github\.com[:/]([^/]+\/[^/.]+)/);
 		if (match) {
 			const slug = match[1].replace(/\.git$/, "");
-			releaseUrl = `https://github.com/${slug}/releases/tag/${tag}`;
+			releaseUrl = `https://github.com/${slug}/releases/tag/${gitTag}`;
 		}
 	} catch {
 		// no remote
 	}
 
-	p.outro(
-		`${pc.green("✓")} Released ${pc.green(tag)} — ${pc.cyan(releaseUrl)}`,
-	);
+	if (isDryRun) {
+		p.outro(`${pc.dim("[dry-run]")} Would release ${pc.green(gitTag)} — no changes were made`);
+	} else {
+		p.outro(
+			`${pc.green("✓")} Released ${pc.green(gitTag)} — ${pc.cyan(releaseUrl)}`,
+		);
+	}
 }
 
 main().catch((err) => {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`@lacymorrow/shipx` — an interactive release CLI built on `@clack/prompts`. Runs an ordered pipeline (preflight → version bump → changelog → commit/tag → push → GitHub release → npm → Homebrew) over a project. Supports multi-project batch deploys via `--multi`. Published to npm; consumed by other repos in `~/repo/` (notably Juno via Cargo workspace support).
+`@lacymorrow/shipx` — an interactive release CLI built on `@clack/prompts`. Runs an ordered pipeline (preflight → cleanup → test → version bump → changelog → commit/tag → push → GitHub release → npm → Homebrew) over a project. Supports multi-project batch deploys via `--multi`. Published to npm; consumed by other repos in `~/repo/` (notably Juno via Cargo workspace support).
 
 ## Commands
 
@@ -15,7 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Run against another project | `SHIPX_ROOT=/path/to/project bun run src/cli.ts` |
 | Typecheck | `bun run typecheck` (`tsc --noEmit`) |
 | Build for publish | `bun run build` |
-| Smoke-test built binary | `node dist/cli.js --help` (no real `--help` flag; this will start the prompt — Ctrl-C out) |
+| Smoke-test built binary | `node dist/cli.js --help` |
+| Dry-run preview | `bun run src/cli.ts --dry-run` |
 
 There are no tests. Use `typecheck` + manual dev runs against a scratch repo.
 
@@ -49,13 +50,24 @@ After merging, several fields **auto-detect** when left undefined:
 Each step is a function taking `ResolvedConfig`. They shell out via `exec()` / `shell()` in `utils.ts` (`execFileSync` / `execSync` with `encoding: "utf-8"`). Steps print progress via `@clack/prompts` spinners and `p.log.*`.
 
 Notable behavior:
+- **`preflight.ts`** — validates clean tree, correct branch, remote sync, archived repo, npm auth, package entry points, and package files field. `--any-branch` skips branch check. `--dry-run` skips all validation.
+- **`cleanup.ts`** — opt-in (`steps.cleanup`). Deletes `node_modules` and reinstalls with frozen lockfile. Detects package manager from lockfile.
+- **`test.ts`** — opt-in (`steps.test`). Runs the configured test script (default: `test`). Override with `testScript` config or disable with `--no-tests`.
 - **`version.ts`** — prompts for patch/minor/major or accepts an explicit semver. Beta path (`--beta`) increments `-beta.N` if already a beta, otherwise creates `X.Y.Z-beta.0`. Pre-release suffix is stripped before computing the next stable.
 - **`bump.ts`** — rewrites `package.json` `version` field and applies regex-based `bumpFiles` replacements. Returns paths to stage via `getFilesToStage()`.
 - **`cargo.ts`** — shells `cargo set-version --workspace <v>` per workspace dir. Requires `cargo-edit` to be installed; failure prints the install hint and `process.exit(1)`.
 - **`git.ts`** — single commit for all bumped files, then tag. `extraTags` templates support `{tag}` (full, e.g. `v0.5.3`) and `{version}` (bare). Dedup'd and never duplicates the main tag. Commit/push flags default to `--no-verify`; respect any user override rather than hardcoding bypasses.
-- **`npm.ts`** — on failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits. Accepts an optional `otp` parameter for batch mode (multi-project deploy passes OTP through).
+- **`npm.ts`** — supports custom dist-tags via `--tag <name>` (e.g. next, canary, rc). On failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits. Accepts an optional `otp` parameter for batch mode (multi-project deploy passes OTP through). If publish fails, cli.ts offers to **rollback** the release commit and tag.
 - **`homebrew.ts`** — downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula, commits and pushes from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this).
 - **`github.ts`** — uses `gh release create`. Failures are logged but do not abort the pipeline.
+
+### Dry-run mode
+
+`--dry-run` previews every step without executing. Each step checks `config.dryRun` and logs what it *would* do. Useful for verifying the pipeline configuration before a real release.
+
+### Rollback on publish failure
+
+If npm publish fails after the release commit/tag have been created, cli.ts prompts to rollback: deletes the tag(s) and resets the commit (`git reset --soft HEAD~1`). This prevents orphaned tags and commits.
 
 ### Multi-project mode (`src/multi.ts`, `src/discover.ts`)
 
@@ -70,7 +82,7 @@ The flow runs in three phases:
 
 ### What "release branch" means
 
-`preflight.ts` requires a clean tree and (for non-beta) refuses to run unless current branch equals `config.git.releaseBranch` (default `main`). Beta releases skip the branch check but still require a clean tree.
+`preflight.ts` requires a clean tree and (for non-beta, non-`--any-branch`) refuses to run unless current branch equals `config.git.releaseBranch` (default `main`). Beta releases and `--any-branch` skip the branch check but still require a clean tree.
 
 ## Conventions specific to this repo
 
