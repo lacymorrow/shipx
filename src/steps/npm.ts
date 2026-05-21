@@ -16,6 +16,11 @@ function isAuthError(err: unknown): boolean {
 	return /E401|E403|E404|ENEEDAUTH|not logged in/i.test(text);
 }
 
+function isOtpError(err: unknown): boolean {
+	const text = errorText(err);
+	return /EOTP|one-time password/i.test(text);
+}
+
 async function ensureNpmAuth(cwd?: string): Promise<boolean> {
 	const user = isNpmLoggedIn(cwd);
 	if (user) {
@@ -48,10 +53,23 @@ async function ensureNpmAuth(cwd?: string): Promise<boolean> {
 	return false;
 }
 
+function publishArgs(access: string, isBeta: boolean): string[] {
+	return ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
+}
+
+function tryWebPublish(args: string[], cwd?: string): boolean {
+	try {
+		exec("npm", [...args, "--auth-type", "web"], { cwd, stdio: "inherit" });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export async function publishNpm(
 	config: ResolvedConfig,
 	isBeta: boolean,
-	otp?: string,
+	opts?: { otp?: string; webAuth?: boolean },
 ): Promise<boolean> {
 	const { cwd, access } = config.npm;
 
@@ -66,22 +84,35 @@ export async function publishNpm(
 		}
 	}
 
-	const baseArgs = ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
-	if (otp) baseArgs.push("--otp", otp);
+	const baseArgs = publishArgs(access, isBeta);
 
-	const spinner = p.spinner();
-	spinner.start(`Publishing to npm${isBeta ? " (beta)" : ""}`);
+	if (opts?.webAuth) {
+		p.log.info("Publishing to npm with browser authentication…");
+		if (tryWebPublish(baseArgs, cwd)) {
+			p.log.success(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
+			return true;
+		}
+		p.log.error("npm publish with web auth failed");
+	} else {
+		const attemptArgs = [...baseArgs];
+		if (opts?.otp) attemptArgs.push("--otp", opts.otp);
 
-	try {
-		exec("npm", baseArgs, { cwd });
-		spinner.stop(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
-		return true;
-	} catch (err) {
-		spinner.stop(pc.yellow("npm publish failed"));
-		p.log.message(pc.dim(errorText(err)));
+		const spinner = p.spinner();
+		spinner.start(`Publishing to npm${isBeta ? " (beta)" : ""}`);
 
-		if (isAuthError(err)) {
-			p.log.warn("This looks like an authentication error — try logging in first");
+		try {
+			exec("npm", attemptArgs, { cwd });
+			spinner.stop(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
+			return true;
+		} catch (err) {
+			spinner.stop(pc.yellow("npm publish failed"));
+			p.log.message(pc.dim(errorText(err)));
+
+			if (isOtpError(err)) {
+				p.log.warn("npm requires authentication — use web auth (passkeys) or enter an OTP code");
+			} else if (isAuthError(err)) {
+				p.log.warn("This looks like an authentication error — try logging in first");
+			}
 		}
 	}
 
@@ -89,9 +120,10 @@ export async function publishNpm(
 		const action = await p.select({
 			message: "How would you like to proceed?",
 			options: [
+				{ value: "web" as const, label: "Web auth (passkey)", hint: "open browser to authenticate and publish" },
 				{ value: "otp" as const, label: "Enter OTP", hint: "publish with one-time password" },
 				{ value: "login" as const, label: "Log in to npm", hint: "run npm login, then retry" },
-				{ value: "retry" as const, label: "Retry publish", hint: "try again without OTP" },
+				{ value: "retry" as const, label: "Retry publish", hint: "try again without auth" },
 				{ value: "skip" as const, label: "Skip npm publish", hint: "continue to next step" },
 			],
 		});
@@ -112,7 +144,17 @@ export async function publishNpm(
 			continue;
 		}
 
-		const retryArgs = ["publish", "--access", access, ...(isBeta ? ["--tag", "beta"] : [])];
+		if (action === "web") {
+			p.log.info("Opening browser for authentication…");
+			if (tryWebPublish(baseArgs, cwd)) {
+				p.log.success(pc.green("Published to npm"));
+				return true;
+			}
+			p.log.error("npm publish with web auth failed");
+			continue;
+		}
+
+		const retryArgs = [...baseArgs];
 		if (action === "otp") {
 			const newOtp = await p.text({
 				message: "npm OTP",

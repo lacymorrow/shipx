@@ -253,55 +253,62 @@ export async function multiMain(argv: string[]): Promise<void> {
 		return;
 	}
 
-	// Phase 2: Batch npm publish with shared OTP
+	// Phase 2: Batch npm publish
 	const npmProjects = prepared.filter((pp) => pp.config.steps.npm && pp.project.hasNpm);
 
 	if (npmProjects.length) {
 		p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
 
-		let otp: string | undefined;
-		if (npmProjects.length > 1) {
-			p.log.info(
-				`Publishing ${pc.cyan(String(npmProjects.length))} packages. ` +
-				`Enter your OTP once — it'll be reused for all publishes.`,
-			);
-		}
-
-		const needsOtp = await p.confirm({
-			message: "Do you need to enter an npm OTP?",
-			initialValue: true,
+		const authMethod = await p.select({
+			message: "npm authentication method",
+			options: [
+				{ value: "web" as const, label: "Web auth (passkey)", hint: "authenticate in browser" },
+				{ value: "otp" as const, label: "Enter OTP code", hint: "reuse one OTP for all packages" },
+				{ value: "none" as const, label: "No auth needed", hint: "token already configured" },
+			],
 		});
 
-		if (!p.isCancel(needsOtp) && needsOtp) {
-			const otpInput = await p.text({
-				message: "npm OTP (will be used for all packages)",
-				placeholder: "123456",
-				validate: (v) => {
-					if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
-				},
-			});
-			if (!p.isCancel(otpInput)) {
-				otp = otpInput.trim();
+		if (!p.isCancel(authMethod)) {
+			let otp: string | undefined;
+			const webAuth = authMethod === "web";
+
+			if (authMethod === "otp") {
+				if (npmProjects.length > 1) {
+					p.log.info(
+						`Publishing ${pc.cyan(String(npmProjects.length))} packages. ` +
+						`Enter your OTP once — it'll be reused for all publishes.`,
+					);
+				}
+				const otpInput = await p.text({
+					message: "npm OTP (will be used for all packages)",
+					placeholder: "123456",
+					validate: (v) => {
+						if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+					},
+				});
+				if (!p.isCancel(otpInput)) {
+					otp = otpInput.trim();
+				}
 			}
-		}
 
-		const results: { name: string; success: boolean }[] = [];
+			const results: { name: string; success: boolean }[] = [];
 
-		for (const pp of npmProjects) {
-			p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
-			const success = await publishNpm(pp.config, pp.isBeta, otp);
-			if (!success) otp = undefined;
-			results.push({ name: pp.project.dirName, success });
-		}
+			for (const pp of npmProjects) {
+				p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
+				const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth });
+				if (!success && otp) otp = undefined;
+				results.push({ name: pp.project.dirName, success });
+			}
 
-		const succeeded = results.filter((r) => r.success);
-		const failed = results.filter((r) => !r.success);
+			const succeeded = results.filter((r) => r.success);
+			const failed = results.filter((r) => !r.success);
 
-		if (succeeded.length) {
-			p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
-		}
-		if (failed.length) {
-			p.log.warn(`Skipped/failed: ${failed.map((r) => pc.yellow(r.name)).join(", ")}`);
+			if (succeeded.length) {
+				p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
+			}
+			if (failed.length) {
+				p.log.warn(`Skipped/failed: ${failed.map((r) => pc.yellow(r.name)).join(", ")}`);
+			}
 		}
 	}
 
