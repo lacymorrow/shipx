@@ -12,6 +12,7 @@ import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
+import { reconcileRegistryVersion } from "./registry.ts";
 import { branchExists, errorText, exec, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
@@ -215,12 +216,22 @@ export async function multiMain(argv: string[]): Promise<void> {
 			}
 		}
 
+		let baseVersion = project.version;
+		if (config.steps.npm && project.hasNpm) {
+			baseVersion = await reconcileRegistryVersion(
+				project.name,
+				project.version,
+				config.npm.cwd,
+				{ displayName: project.dirName },
+			);
+		}
+
 		const versionArg = bumpMode === "individual" ? undefined : bumpMode;
-		const newVersion = await pickVersion(project.version, versionArg, isBeta);
+		const newVersion = await pickVersion(baseVersion, versionArg, isBeta);
 		const tag = `${config.git.tagPrefix}${newVersion}`;
 
 		const proceed = await p.confirm({
-			message: `${project.dirName}: ${pc.cyan(project.version)} → ${pc.green(newVersion)} (${tag})?`,
+			message: `${project.dirName}: ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${tag})?`,
 		});
 		if (p.isCancel(proceed) || !proceed) {
 			p.log.info(`Skipping ${project.dirName}`);
