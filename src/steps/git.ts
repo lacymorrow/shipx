@@ -54,6 +54,15 @@ function isRemoteAhead(err: unknown): boolean {
 	return msg.includes("fetch first") || msg.includes("non-fast-forward");
 }
 
+function hasDirtyTree(cwd: string): boolean {
+	try {
+		const out = exec("git", ["status", "--porcelain"], { cwd }).trim();
+		return out.length > 0;
+	} catch {
+		return false;
+	}
+}
+
 export async function pushChanges(
 	config: ResolvedConfig,
 	branch: string,
@@ -84,6 +93,25 @@ export async function pushChanges(
 			process.exit(1);
 		}
 
+		const stashMessage = `shipx: pre-pull-rebase ${tag}`;
+		let stashed = false;
+		if (hasDirtyTree(config.root)) {
+			const stashSpinner = p.spinner();
+			stashSpinner.start("Stashing dirty files before pull");
+			try {
+				exec(
+					"git",
+					["stash", "push", "--include-untracked", "-m", stashMessage],
+					{ cwd: config.root },
+				);
+				stashed = true;
+				stashSpinner.stop("Stashed dirty files");
+			} catch (stashErr) {
+				stashSpinner.stop(pc.red("Stash failed"));
+				throw stashErr;
+			}
+		}
+
 		const pullSpinner = p.spinner();
 		pullSpinner.start("Pulling with rebase");
 		try {
@@ -91,7 +119,27 @@ export async function pushChanges(
 			pullSpinner.stop("Pulled successfully");
 		} catch (pullErr) {
 			pullSpinner.stop(pc.red("Pull failed"));
+			if (stashed) {
+				p.log.warn(
+					`Dirty files remain stashed as ${pc.cyan(stashMessage)}. Recover with ${pc.green("git stash pop")}.`,
+				);
+			}
 			throw pullErr;
+		}
+
+		if (stashed) {
+			const popSpinner = p.spinner();
+			popSpinner.start("Restoring stashed files");
+			try {
+				exec("git", ["stash", "pop"], { cwd: config.root });
+				popSpinner.stop("Restored stashed files");
+			} catch (popErr) {
+				popSpinner.stop(pc.red("Stash pop failed"));
+				p.log.error(
+					`Stash pop failed — likely a conflict. Resolve manually: ${pc.green("git stash list")} then ${pc.green("git stash pop")}.`,
+				);
+				throw popErr;
+			}
 		}
 
 		const retrySpinner = p.spinner();
