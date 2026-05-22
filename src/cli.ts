@@ -399,7 +399,8 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (config.steps.homebrew && !isBeta) {
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula`);
+			const brewMode = Object.keys(config.homebrew.binaryAssets).length > 0 ? "binary" : "source";
+			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula (${brewMode} mode)`);
 		} else {
 			await publishHomebrew(config, gitTag);
 		}

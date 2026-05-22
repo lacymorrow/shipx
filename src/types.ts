@@ -80,6 +80,18 @@ export interface ShipConfig {
 		repoSlug?: string;
 		/** Commit message template. Use {tag} and {formula} placeholders */
 		commitMessage?: string;
+		/**
+		 * Per-platform release asset filenames for pre-built binary formulas.
+		 * When set, downloads each platform asset from the GitHub release and computes
+		 * per-platform SHA256 hashes instead of downloading a single source tarball.
+		 *
+		 * Keys: "darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"
+		 * Values: asset filename. Use {version} for bare version, {tag} for prefixed tag.
+		 *
+		 * The formula must use on_macos/on_linux blocks with Hardware::CPU conditionals
+		 * containing paired url + sha256 lines.
+		 */
+		binaryAssets?: Record<string, string>;
 	};
 }
 

@@ -56,6 +56,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		formulaFile: "",
 		repoSlug: "",
 		commitMessage: "{formula}: update to {tag}",
+		binaryAssets: {},
 	},
 };
 
@@ -81,7 +82,11 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 		},
 		github: { ...base.github, ...user.github },
 		npm: { ...base.npm, ...user.npm },
-		homebrew: { ...base.homebrew, ...user.homebrew },
+		homebrew: {
+			...base.homebrew,
+			...user.homebrew,
+			binaryAssets: user.homebrew?.binaryAssets ?? base.homebrew.binaryAssets,
+		},
 	};
 }
 
