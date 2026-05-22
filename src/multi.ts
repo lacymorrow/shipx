@@ -386,9 +386,16 @@ export async function multiMain(argv: string[]): Promise<void> {
 			}
 		}
 
-		let baseVersion = config.versionSource
-			? (readJson(resolve(project.path, config.versionSource)).version as string) || project.version
-			: project.version;
+		let baseVersion = project.version;
+		if (config.versionSource) {
+			const vsPath = resolve(project.path, config.versionSource);
+			try {
+				const vs = readJson(vsPath);
+				if (typeof vs.version === "string") baseVersion = vs.version;
+			} catch {
+				p.log.warn(`Could not read versionSource at ${pc.cyan(config.versionSource)} — using detected version ${pc.dim(project.version)}`);
+			}
+		}
 		if (config.steps.npm && project.hasNpm) {
 			baseVersion = await reconcileRegistryVersion(
 				project.name,

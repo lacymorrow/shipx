@@ -38,7 +38,7 @@ Lookup order, first hit wins:
 
 After merging, several fields **auto-detect** when left undefined:
 - `packageJsonPaths` defaults to `["package.json"]` if a root `package.json` exists.
-- `versionSource`: path to the package.json whose `version` field is the source of truth. In monorepos where the root package.json has no version (e.g. `private: true`), set this to the sub-package that owns the version (e.g. `"packages/opencode/package.json"`). When omitted, defaults to `packageJsonPaths[0]`.
+- `versionSource`: path to the package.json whose `version` field is the source of truth. In monorepos where the root package.json has no version (e.g. `private: true`), set this to the sub-package that owns the version (e.g. `"packages/opencode/package.json"`). When using this, `packageJsonPaths` should typically list only the sub-package(s) that own the version — including a versionless root is harmless for bumping but can confuse preflight checks. When omitted, defaults to `packageJsonPaths[0]`.
 - `cargoWorkspaces`: if **undefined** (not `[]`) and `src-tauri/Cargo.toml` exists, sets `["src-tauri"]`. The `undefined`-vs-`[]` distinction is load-bearing — `[]` is the explicit opt-out. Don't replace that check with a `.length` check.
 - `homebrew.tapPath`: falls back to sibling `../homebrew-tap` if present.
 - `homebrew.repoSlug` and `homebrew.formulaFile`: derived from `git remote get-url origin` when tap is set but slug/formula are not.
