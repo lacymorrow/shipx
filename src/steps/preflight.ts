@@ -214,9 +214,11 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 	const branch = checkBranch(config, isBeta);
 	checkRemoteSynced(config, branch);
 
-	const pkgPath = resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
-	if (existsSync(pkgPath)) {
-		const pkg = readJson(pkgPath);
+	const versionPkgPath = config.versionSource
+		? resolve(config.root, config.versionSource)
+		: resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
+	if (existsSync(versionPkgPath)) {
+		const pkg = readJson(versionPkgPath);
 		if (typeof pkg.version === "string") {
 			checkTagNotExists(config, config.git.tagPrefix, pkg.version);
 		}
