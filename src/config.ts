@@ -50,6 +50,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	npm: {
 		cwd: "",
 		access: "public",
+		targets: [],
 	},
 	homebrew: {
 		tapPath: "",
@@ -81,7 +82,11 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 				: normalizeFlags(user.git.pushFlags),
 		},
 		github: { ...base.github, ...user.github },
-		npm: { ...base.npm, ...user.npm },
+		npm: {
+			cwd: user.npm?.cwd ?? base.npm.cwd,
+			access: user.npm?.access ?? base.npm.access,
+			targets: [], // resolved in loadConfig after cwd is finalized
+		},
 		homebrew: { ...base.homebrew, ...user.homebrew },
 		hooks: { ...base.hooks, ...user.hooks },
 	};
@@ -125,6 +130,16 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 
 	if (!merged.npm.cwd) {
 		merged.npm.cwd = root;
+	}
+
+	const userTargets = userConfig.npm?.targets;
+	if (userTargets && userTargets.length > 0) {
+		merged.npm.targets = userTargets.map((t) => ({
+			cwd: t.cwd ? resolve(root, t.cwd) : merged.npm.cwd,
+			access: t.access ?? merged.npm.access,
+		}));
+	} else {
+		merged.npm.targets = [{ cwd: merged.npm.cwd, access: merged.npm.access }];
 	}
 
 	// Auto-detect Tauri workspace: if src-tauri/Cargo.toml exists and the user
