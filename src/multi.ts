@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
@@ -13,7 +14,7 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
-import { branchExists, errorText, exec, setupCleanExit } from "./utils.ts";
+import { branchExists, errorText, exec, readJson, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 setupCleanExit();
@@ -387,6 +388,15 @@ export async function multiMain(argv: string[]): Promise<void> {
 		}
 
 		let baseVersion = project.version;
+		if (config.versionSource) {
+			const vsPath = resolve(project.path, config.versionSource);
+			try {
+				const vs = readJson(vsPath);
+				if (typeof vs.version === "string") baseVersion = vs.version;
+			} catch {
+				p.log.warn(`Could not read versionSource at ${pc.cyan(config.versionSource)} — using detected version ${pc.dim(project.version)}`);
+			}
+		}
 		if (config.steps.npm && project.hasNpm) {
 			baseVersion = await reconcileRegistryVersion(
 				project.name,

@@ -204,10 +204,14 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(1);
 	}
 
+	const versionSourcePath = config.versionSource
+		? resolve(root, config.versionSource)
+		: pkgJsonPaths[0];
 	const rootPkg = readJson(pkgJsonPaths[0]);
-	const currentVersion = rootPkg.version as string;
+	const versionPkg = config.versionSource ? readJson(versionSourcePath) : rootPkg;
+	const currentVersion = versionPkg.version as string;
 	if (!currentVersion) {
-		p.log.error(`No version found in ${pc.cyan(pkgJsonPaths[0])}`);
+		p.log.error(`No version found in ${pc.cyan(versionSourcePath)}`);
 		process.exit(1);
 	}
 
