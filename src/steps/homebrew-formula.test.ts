@@ -112,4 +112,27 @@ end
 		expect(urlLine).toStartWith("  ");
 		expect(shaLine).toStartWith("  ");
 	});
+
+	test("matches uppercase hex sha256", () => {
+		const upperFormula = `class Shipx < Formula
+  url "https://github.com/lacymorrow/shipx/archive/refs/tags/v0.1.10.tar.gz"
+  sha256 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+end
+`;
+		const result = updateFormulaUrlAndSha(upperFormula, NEW_URL, NEW_SHA);
+		expect(result).toContain(`url "${NEW_URL}"`);
+		expect(result).toContain(`sha256 "${NEW_SHA}"`);
+		expect(result).not.toContain("AAAA");
+	});
+
+	test("does not interpret $ in newUrl/newSha as regex backreferences", () => {
+		// If escapeReplacement is missing, `$1` in the replacement string would
+		// resolve to the first captured group instead of the literal "$1".
+		const trickyUrl =
+			"https://github.com/lacymorrow/shipx/archive/refs/tags/v0.1.11$1$&.tar.gz";
+		const trickySha = "$1$&11111111111111111111111111111111111111111111111111111111111111";
+		const result = updateFormulaUrlAndSha(SIMPLE_FORMULA, trickyUrl, trickySha);
+		expect(result).toContain(`url "${trickyUrl}"`);
+		expect(result).toContain(`sha256 "${trickySha}"`);
+	});
 });
