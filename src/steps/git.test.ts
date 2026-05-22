@@ -30,6 +30,7 @@ function makeConfig(root: string): ResolvedConfig {
 		anyBranch: false,
 		tag: "",
 		packageJsonPaths: [],
+		versionSource: "",
 		bumpFiles: [],
 		cargoWorkspaces: [],
 		testScript: "test",
@@ -45,8 +46,9 @@ function makeConfig(root: string): ResolvedConfig {
 			pushFlags: ["--no-verify"],
 		},
 		github: { draft: false, assets: [] },
-		npm: { cwd: root, access: "public" },
+		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }] },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		hooks: {},
 	};
 }
 

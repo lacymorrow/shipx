@@ -41,6 +41,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		anyBranch: false,
 		tag: "v1.0.0",
 		packageJsonPaths: ["package.json"],
+		versionSource: "",
 		bumpFiles: [],
 		cargoWorkspaces: [],
 		testScript: "test",
@@ -54,8 +55,9 @@ function makeFakeConfig(name: string): ResolvedConfig {
 			commitMessage: "release: {tag}", commitFlags: ["--no-verify"], pushFlags: ["--no-verify"],
 		},
 		github: { draft: false, assets: [] },
-		npm: { cwd: `/tmp/fake/${name}`, access: "public" },
+		npm: { cwd: `/tmp/fake/${name}`, access: "public", targets: [{ cwd: `/tmp/fake/${name}`, access: "public" }] },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		hooks: {},
 	};
 }
 

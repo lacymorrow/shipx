@@ -4,6 +4,7 @@ import pc from "picocolors";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
+import { runHook } from "./hooks.ts";
 import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
@@ -19,7 +20,7 @@ import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, parseFlag, readJson, setupCleanExit } from "./utils.ts";
 
-export type { ShipConfig, BumpFileConfig } from "./types.ts";
+export type { ShipConfig, BumpFileConfig, Hooks, HookFunction, HookContext, NpmTarget } from "./types.ts";
 
 setupCleanExit();
 
@@ -243,17 +244,28 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		p.log.info(pc.dim("Dry-run mode — no changes will be made"));
 	}
 
+	const hookCtx = () => ({ config, version: newVersion, tag: gitTag, changelog, isBeta });
+	let newVersion = "";
+	let gitTag = "";
+	let changelog = `- Release (pending)`;
+
 	let branch = "main";
 	if (config.steps.preflight) {
+		await runHook("prePreflight", config.hooks.prePreflight, hookCtx());
 		branch = runPreflight(config, isBeta);
+		await runHook("postPreflight", config.hooks.postPreflight, hookCtx());
 	}
 
 	if (config.steps.cleanup) {
+		await runHook("preCleanup", config.hooks.preCleanup, hookCtx());
 		runCleanup(config);
+		await runHook("postCleanup", config.hooks.postCleanup, hookCtx());
 	}
 
 	if (config.steps.test) {
+		await runHook("preTest", config.hooks.preTest, hookCtx());
 		runTests(config);
+		await runHook("postTest", config.hooks.postTest, hookCtx());
 	}
 
 	let baseVersion = currentVersion;
@@ -271,8 +283,9 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		}
 	}
 
-	const newVersion = await pickVersion(baseVersion, args[0], isBeta);
-	const gitTag = `${config.git.tagPrefix}${newVersion}`;
+	newVersion = await pickVersion(baseVersion, args[0], isBeta);
+	gitTag = `${config.git.tagPrefix}${newVersion}`;
+	changelog = `- Release ${gitTag}`;
 
 	const distTag = customTag ?? (isBeta ? "beta" : "latest");
 	const distTagDisplay = distTag !== "latest" ? ` (dist-tag: ${pc.yellow(distTag)})` : "";
@@ -287,6 +300,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	let cargoStageDirs: string[] = [];
 	if (config.steps.bumpVersion) {
+		await runHook("preBump", config.hooks.preBump, hookCtx());
 		if (isDryRun) {
 			const files = [...config.packageJsonPaths, ...config.bumpFiles.map((f) => f.path)];
 			p.log.info(`${pc.dim("[dry-run]")} Would bump version in: ${files.map((f) => pc.cyan(f)).join(", ")}`);
@@ -297,15 +311,17 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			bumpVersionFiles(config, newVersion);
 			cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
 		}
+		await runHook("postBump", config.hooks.postBump, hookCtx());
 	}
 
-	let changelog = `- Release ${gitTag}`;
 	if (config.steps.changelog) {
+		await runHook("preChangelog", config.hooks.preChangelog, hookCtx());
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would generate changelog from commits since last tag`);
 		} else {
 			changelog = generateChangelog(config, gitTag);
 		}
+		await runHook("postChangelog", config.hooks.postChangelog, hookCtx());
 	}
 
 	const extraTags = config.git.extraTags
@@ -316,6 +332,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	let commitWasMade = false;
 
 	if (config.steps.commit || config.steps.tag) {
+		await runHook("preCommit", config.hooks.preCommit, hookCtx());
 		if (isDryRun) {
 			const allTags = [gitTag, ...extraTags].map((t) => pc.green(t)).join(", ");
 			p.log.info(`${pc.dim("[dry-run]")} Would commit and tag: ${allTags}`);
@@ -324,10 +341,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			commitAndTag(config, gitTag, newVersion, filesToStage);
 			commitWasMade = config.steps.commit;
 		}
+		await runHook("postCommit", config.hooks.postCommit, hookCtx());
 	}
 
 	let pushedTags: string[] = [];
 	if (config.steps.push) {
+		await runHook("prePush", config.hooks.prePush, hookCtx());
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would push branch ${pc.cyan(branch)} and tag(s) to origin`);
 		} else {
@@ -347,6 +366,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 							commitWasMade,
 							branchPushed: err.branchPushed,
 						});
+						await runHook("postPush", config.hooks.postPush, hookCtx());
 						p.outro(pc.yellow("Release rolled back."));
 						return;
 					}
@@ -368,9 +388,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				p.log.info(`CI-handled (via tag push): ${ciHandled.join(", ")}`);
 			}
 		}
+		await runHook("postPush", config.hooks.postPush, hookCtx());
 	}
 
 	if (config.steps.githubRelease) {
+		await runHook("preGithubRelease", config.hooks.preGithubRelease, hookCtx());
 		if (isDryRun) {
 			const draftLabel = config.github.draft ? " (draft)" : "";
 			const assetLabel = config.github.assets.length
@@ -380,11 +402,20 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		} else {
 			createGithubRelease(config, gitTag, changelog, isBeta);
 		}
+		await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 	}
 
 	if (config.steps.npm) {
+		await runHook("preNpm", config.hooks.preNpm, hookCtx());
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.access}, tag=${distTag}`);
+			if (config.npm.targets.length > 1) {
+				p.log.info(`${pc.dim("[dry-run]")} Would publish ${pc.cyan(String(config.npm.targets.length))} npm targets with tag=${distTag}`);
+				for (const target of config.npm.targets) {
+					p.log.message(`  ${pc.dim("→")} ${pc.cyan(target.cwd)} (access=${target.access})`);
+				}
+			} else {
+				p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.targets[0].access}, tag=${distTag}`);
+			}
 		} else {
 			const published = await publishNpm(config, isBeta, { distTag: customTag });
 			if (!published && (config.steps.commit || config.steps.tag)) {
@@ -394,20 +425,24 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				});
 				if (!p.isCancel(doRollback) && doRollback) {
 					rollbackRelease(root, gitTag, extraTags, pushedTags, { preReleaseSha, commitWasMade });
+					await runHook("postNpm", config.hooks.postNpm, hookCtx());
 					p.outro(pc.yellow("Release rolled back."));
 					return;
 				}
 			}
 		}
+		await runHook("postNpm", config.hooks.postNpm, hookCtx());
 	}
 
 	if (config.steps.homebrew && !isBeta) {
+		await runHook("preHomebrew", config.hooks.preHomebrew, hookCtx());
 		if (isDryRun) {
 			const brewMode = Object.keys(config.homebrew.binaryAssets).length > 0 ? "binary" : "source";
 			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula (${brewMode} mode)`);
 		} else {
 			await publishHomebrew(config, gitTag);
 		}
+		await runHook("postHomebrew", config.hooks.postHomebrew, hookCtx());
 	} else if (isBeta && config.steps.homebrew) {
 		p.log.info("Skipping Homebrew for beta release");
 	}
