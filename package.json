@@ -10,7 +10,8 @@
     "build": "bun build src/cli.ts --outfile dist/cli.js --target node && node scripts/postbuild.mjs",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
-    "dev": "bun run src/cli.ts"
+    "dev": "bun run src/cli.ts",
+    "test": "bun test src/tests/"
   },
   "keywords": [
     "release",
