@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (LAC-2021)
+
+- **npm registry lookup distinguishes 404 vs network error** (`registry.ts`). Previously, both produced a silent `null` and shipx would bump from a stale local version even if the registry was unreachable; now network failures surface a loud warning that the publish may collide.
+- **Tag collision guard before commit** (`git.ts`, `preflight.ts`). `commitAndTag` now refuses to run when the target tag already exists locally and throws before the release commit is created, so a stale tag from a half-finished run no longer corrupts the next release.
+- **Rebase-conflict guidance** (`git.ts`). When `git pull --rebase` fails during the push-and-retry path, the warning now lists the local-only release tags created by this run and shows the exact `git tag -d …` command to clean them up before retrying.
+- **Cargo bump failure no longer hard-exits** (`steps/cargo.ts`). The step now throws so the CLI's outer error handler (and any future rollback logic) can react, instead of `process.exit(1)` killing the pipeline mid-flight.
+- **Conventional-Commit breaking-change detection is anchored** (`steps/changelog.ts`). The previous `subject.includes("!:")` fired on subjects like `fix: handle !:= operator`; now matches the `<type>(<scope>)?!:` prefix only.
+- **GitHub release returns success/failure** (`steps/github.ts`). For beta releases this is the only prerelease signal, so the result is no longer swallowed — callers get a `false` and a manual `gh release create` hint on failure.
+- **Quoted commit/push flags preserved** (`types.ts`, `config.ts`, `steps/git.ts`). `git.commitFlags` / `git.pushFlags` now accept `string[]` (preferred) in addition to the legacy whitespace-split string, so arguments containing spaces don't get torn apart.
+- **Shell-free cleanup/test invocations** (`steps/cleanup.ts`, `steps/test.ts`). Replaced the `shell()` wrappers with `exec()` per the repo convention, removing the shell-quoting surface area for install/test commands.
+- **`--tag <dist-tag>` honored in `--multi`** (`cli.ts`, `multi.ts`). The flag was previously silently dropped when running multi-project deploys.
+- **Preflight `npm whoami` targets the right registry** (`steps/preflight.ts`). Scoped packages (`@scope/name`) and packages with `publishConfig.registry` are now checked against the registry the publish will actually use, fixing misleading "not logged in" warnings on private registries.
+- **Homebrew tarball download** (`steps/homebrew.ts`). Added `curl -f` so a 404 doesn't get hashed and committed as the formula's SHA256, and the tmp file is now unlinked in all paths.
+- **Silent no-op in `bumpFiles`** (`steps/bump.ts`). When a `bumpFiles` regex doesn't match, the file is no longer rewritten unchanged (and unnecessarily staged) — instead the user gets a clear warning.
+- **Build postprocess sanity check** (`scripts/postbuild.mjs`, `package.json`). The bun→node shebang rewrite now lives in a dedicated script and throws if `dist/cli.js` doesn't start with the expected node shebang, so a future bun output format change fails the build instead of silently shipping a broken binary.
+
 ### Added
 
 - **npm registry version check**: before prompting for a bump, shipx now queries `npm view <pkg> version` and — if the registry is ahead of the local `package.json` — warns the user and offers to use the registry version as the bump base. Prevents the `Cannot implicitly apply the "latest" tag because previously published version X.Y.Z is higher than the new version` publish failure when local state has drifted behind the registry. Applies to both single mode and `--multi`; skipped for private packages and when the npm step is disabled. [LAC-1951]

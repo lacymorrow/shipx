@@ -3,6 +3,18 @@ import { resolve } from "node:path";
 import type { ResolvedConfig, ShipConfig } from "./types.ts";
 import { detectDefaultBranch, exec, readJson } from "./utils.ts";
 
+/**
+ * Normalize a flags option that the user may supply as either a string
+ * (whitespace-split) or a pre-tokenized array. The array form is preferred
+ * because it preserves quoted arguments verbatim; whitespace-splitting a
+ * string like `-m "release: v1"` breaks the argument into 3 pieces.
+ */
+export function normalizeFlags(input: string | string[] | undefined): string[] {
+	if (input === undefined) return [];
+	if (Array.isArray(input)) return input.filter((s) => s.length > 0);
+	return input.split(/\s+/).filter(Boolean);
+}
+
 const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	packageJsonPaths: [],
 	bumpFiles: [],
@@ -29,8 +41,8 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		tagPrefix: "v",
 		extraTags: [],
 		commitMessage: "release: {tag}",
-		commitFlags: "--no-verify",
-		pushFlags: "--no-verify",
+		commitFlags: ["--no-verify"],
+		pushFlags: ["--no-verify"],
 	},
 	github: {
 		draft: false,
@@ -57,7 +69,16 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 		tag: base.tag,
 		testScript: user.testScript ?? base.testScript,
 		steps: { ...base.steps, ...user.steps },
-		git: { ...base.git, ...user.git },
+		git: {
+			...base.git,
+			...user.git,
+			commitFlags: user.git?.commitFlags === undefined
+				? base.git.commitFlags
+				: normalizeFlags(user.git.commitFlags),
+			pushFlags: user.git?.pushFlags === undefined
+				? base.git.pushFlags
+				: normalizeFlags(user.git.pushFlags),
+		},
 		github: { ...base.github, ...user.github },
 		npm: { ...base.npm, ...user.npm },
 		homebrew: { ...base.homebrew, ...user.homebrew },

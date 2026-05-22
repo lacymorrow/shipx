@@ -3,7 +3,7 @@ import pc from "picocolors";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, readJson, shell } from "../utils.ts";
+import { errorText, exec, readJson } from "../utils.ts";
 
 function detectPackageManager(root: string): string {
 	if (existsSync(resolve(root, "bun.lockb")) || existsSync(resolve(root, "bun.lock"))) return "bun";
@@ -34,13 +34,14 @@ export function runTests(config: ResolvedConfig): void {
 	}
 
 	const pm = detectPackageManager(config.root);
-	const cmd = pm === "npm" ? `npm run ${scriptName}` : `${pm} run ${scriptName}`;
+	const args = pm === "npm" ? ["run", scriptName] : ["run", scriptName];
+	const display = `${pm} run ${scriptName}`;
 
 	const spinner = p.spinner();
-	spinner.start(`Running ${pc.cyan(cmd)}`);
+	spinner.start(`Running ${pc.cyan(display)}`);
 
 	try {
-		shell(cmd, { cwd: config.root, stdio: "pipe" });
+		exec(pm, args, { cwd: config.root, stdio: "pipe" });
 		spinner.stop(`Tests passed`);
 	} catch (err) {
 		spinner.stop(pc.red("Tests failed"));

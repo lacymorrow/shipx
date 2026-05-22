@@ -37,6 +37,15 @@ export function bumpVersionFiles(
 			fileConfig.pattern,
 			fileConfig.replacement(newVersion),
 		);
+		if (updated === content) {
+			// Pattern didn't match — silently writing the unchanged file would
+			// leave a stale version in this file while still staging it for
+			// commit, masking the misconfiguration until users notice later.
+			p.log.warn(
+				`bumpFiles: pattern ${pc.dim(String(fileConfig.pattern))} did not match in ${pc.cyan(fileConfig.path)} — file unchanged`,
+			);
+			continue;
+		}
 		writeFileSync(abs, updated);
 		bumped.push(fileConfig.path);
 	}

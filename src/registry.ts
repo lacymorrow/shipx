@@ -2,17 +2,42 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { errorText, exec } from "./utils.ts";
 
+export type NpmRegistryResult =
+	| { kind: "ok"; version: string }
+	| { kind: "not-published" }
+	| { kind: "network-error"; message: string };
+
 /**
- * Fetches the latest version of a package from the npm registry.
- * Returns null if the package is not published, the network call failed,
- * or `npm view` produced no output.
+ * Decide whether an `npm view` error means the package isn't published
+ * (404 / not found) or that the registry call itself failed (network,
+ * auth, registry down). Network errors must surface loudly — silently
+ * collapsing them lets shipx bump from a stale local version and publish
+ * something that may already exist on the registry.
  */
-export function getNpmRegistryVersion(pkgName: string, cwd?: string): string | null {
+export function classifyNpmViewError(stderr: string): "not-published" | "network-error" {
+	const text = stderr ?? "";
+	if (/E404|code\s*404|is\s+not\s+in\s+(?:this|the)\s+npm\s+registry|404\s+Not\s+Found/i.test(text)) {
+		return "not-published";
+	}
+	return "network-error";
+}
+
+/**
+ * Fetches the latest version of a package from the npm registry. Returns
+ * a tagged result distinguishing a successful lookup, an unpublished
+ * package (404), and a network/registry failure.
+ */
+export function getNpmRegistryVersion(pkgName: string, cwd?: string): NpmRegistryResult {
 	try {
 		const out = exec("npm", ["view", pkgName, "version"], { cwd }).trim();
-		return out || null;
-	} catch {
-		return null;
+		if (!out) return { kind: "not-published" };
+		return { kind: "ok", version: out };
+	} catch (err) {
+		const text = errorText(err);
+		if (classifyNpmViewError(text) === "not-published") {
+			return { kind: "not-published" };
+		}
+		return { kind: "network-error", message: text };
 	}
 }
 
@@ -71,9 +96,10 @@ function splitVersion(v: string): [string, string] {
  * warn and prompt the user to use the registry version as the base for the
  * next bump. Returns the version to use as the bump base.
  *
- * Skips silently when:
- *   - the registry is unreachable or the package is unpublished (returns local),
- *   - the registry version is equal to or below local (returns local).
+ * Returns local version when:
+ *   - the package is unpublished (silent — first release),
+ *   - the registry is unreachable (loud warning — could collide on publish),
+ *   - the registry version is equal to or below local.
  */
 export async function reconcileRegistryVersion(
 	pkgName: string,
@@ -85,11 +111,25 @@ export async function reconcileRegistryVersion(
 
 	const spinner = p.spinner();
 	spinner.start(`Checking npm registry for ${displayName}`);
-	const registryVersion = getNpmRegistryVersion(pkgName, cwd);
-	if (!registryVersion) {
+	const result = getNpmRegistryVersion(pkgName, cwd);
+
+	if (result.kind === "not-published") {
 		spinner.stop(pc.dim(`npm registry: no published version found for ${displayName}`));
 		return localVersion;
 	}
+
+	if (result.kind === "network-error") {
+		spinner.stop(pc.yellow(`npm registry: lookup failed for ${displayName}`));
+		p.log.warn(
+			`Could not reach the npm registry to verify the published version of ${pc.cyan(displayName)}.\n` +
+			`  Using local ${pc.yellow(localVersion)} as the bump base. ` +
+			`If the registry has a higher version, npm will reject the publish.\n` +
+			`  ${pc.dim(result.message.split("\n")[0])}`,
+		);
+		return localVersion;
+	}
+
+	const registryVersion = result.version;
 	spinner.stop(`npm registry latest: ${pc.cyan(registryVersion)}`);
 
 	if (compareSemver(registryVersion, localVersion) <= 0) {

@@ -45,10 +45,18 @@ export interface ShipConfig {
 		extraTags?: string[];
 		/** Commit message template. Use {tag} placeholder. Default: 'release: {tag}' */
 		commitMessage?: string;
-		/** Commit flags. Default: '--no-verify' */
-		commitFlags?: string;
-		/** Push flags. Default: '--no-verify' */
-		pushFlags?: string;
+		/**
+		 * Commit flags. Default: `["--no-verify"]`.
+		 * Strings are accepted for backward compatibility but split on whitespace,
+		 * which breaks for quoted arguments — prefer the array form when a flag
+		 * value could contain spaces (e.g. `-m "release: v1"`).
+		 */
+		commitFlags?: string | string[];
+		/**
+		 * Push flags. Default: `["--no-verify"]`.
+		 * See `commitFlags` for the string-vs-array tradeoff.
+		 */
+		pushFlags?: string | string[];
 	};
 	/** npm publish settings */
 	npm?: {
@@ -75,13 +83,22 @@ export interface ShipConfig {
 	};
 }
 
-export interface ResolvedConfig extends Required<ShipConfig> {
+export interface ResolvedGitConfig {
+	releaseBranch: string;
+	tagPrefix: string;
+	extraTags: string[];
+	commitMessage: string;
+	commitFlags: string[];
+	pushFlags: string[];
+}
+
+export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
 	root: string;
 	dryRun: boolean;
 	anyBranch: boolean;
 	tag: string;
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
-	git: Required<NonNullable<ShipConfig["git"]>>;
+	git: ResolvedGitConfig;
 	github: Required<NonNullable<ShipConfig["github"]>>;
 	npm: Required<NonNullable<ShipConfig["npm"]>>;
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
