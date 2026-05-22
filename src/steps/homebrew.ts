@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec } from "../utils.ts";
+import { detectDefaultBranch, errorText, exec } from "../utils.ts";
 
 export async function publishHomebrew(
 	config: ResolvedConfig,
@@ -41,8 +41,16 @@ export async function publishHomebrew(
 	spinner.start("Updating Homebrew formula");
 
 	try {
-		exec("git", ["checkout", "main"], { cwd: tapPath });
-		exec("git", ["pull", "--rebase", "origin", "main"], { cwd: tapPath });
+		const dirtyCheck = exec("git", ["status", "--porcelain"], { cwd: tapPath }).trim();
+		if (dirtyCheck) {
+			spinner.stop(pc.red("Homebrew tap has uncommitted changes"));
+			p.log.error(`Clean up ${pc.dim(tapPath)} before updating the formula.`);
+			return;
+		}
+
+		const branch = detectDefaultBranch(tapPath);
+		exec("git", ["checkout", branch], { cwd: tapPath });
+		exec("git", ["pull", "--rebase", "origin", branch], { cwd: tapPath });
 
 		const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
 		const tmpFile = join(tmpdir(), `shipx-tarball-${Date.now()}.tar.gz`);
