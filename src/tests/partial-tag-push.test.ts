@@ -120,4 +120,20 @@ describe("partial-push → rollback integration", () => {
 		expect(plan.localTagsToDelete).toEqual(allTags);
 		expect(plan.branchPushed).toBe(true);
 	});
+
+	test("first-tag-fails: branchPushed must come from error, not pushedTags inference", () => {
+		// The original LAC-2014 scenario where the inference default would be wrong:
+		// branch was pushed, then the very first tag-push failed → pushedTags=[]
+		// but branch IS already on the remote and needs force-with-lease cleanup.
+		const allTags = ["v1.0.0", "extra-v1.0.0"];
+		const err = new PartialPushError("first tag push failed", [], true);
+
+		// Without err.branchPushed → wrong (falls back to pushedTags.length > 0 = false)
+		const planInferred = planRollback(allTags, err.pushedTags);
+		expect(planInferred.branchPushed).toBe(false);
+
+		// With err.branchPushed → correct
+		const planExplicit = planRollback(allTags, err.pushedTags, err.branchPushed);
+		expect(planExplicit.branchPushed).toBe(true);
+	});
 });

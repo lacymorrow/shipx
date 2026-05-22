@@ -27,10 +27,14 @@ export function planRollback(
 	branchPushed?: boolean,
 ): RollbackPlan {
 	const pushedSet = new Set(pushedTags);
+	// If branchPushed isn't supplied we infer it from pushedTags: a tag can only
+	// reach the remote after the branch did, so any pushed tag implies branchPushed.
+	// The inverse is NOT true (branch may have been pushed before the very first
+	// tag-push failed) — callers in that case must pass branchPushed explicitly.
 	return {
 		localTagsToDelete: allTags,
 		remoteTagsToDelete: allTags.filter((t) => pushedSet.has(t)),
-		branchPushed: branchPushed ?? pushedTags.length > 0,
+		branchPushed: branchPushed ?? (pushedTags.length > 0),
 	};
 }
 

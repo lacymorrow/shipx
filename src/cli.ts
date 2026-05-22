@@ -80,11 +80,17 @@ function parseFlag(argv: string[], flag: string): string | undefined {
 	return argv[idx + 1];
 }
 
-function rollbackRelease(root: string, tag: string, extraTags: string[], pushedTags: string[]): void {
+function rollbackRelease(
+	root: string,
+	tag: string,
+	extraTags: string[],
+	pushedTags: string[],
+	branchPushed?: boolean,
+): void {
 	p.log.warn("Rolling back release…");
 
 	const allTags = [tag, ...extraTags];
-	const plan = planRollback(allTags, pushedTags);
+	const plan = planRollback(allTags, pushedTags, branchPushed);
 
 	for (const t of plan.localTagsToDelete) {
 		try {
@@ -300,7 +306,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 						initialValue: true,
 					});
 					if (!p.isCancel(doRollback) && doRollback) {
-						rollbackRelease(root, gitTag, extraTags, err.pushedTags);
+						rollbackRelease(root, gitTag, extraTags, err.pushedTags, err.branchPushed);
 						p.outro(pc.yellow("Release rolled back."));
 						return;
 					}
