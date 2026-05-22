@@ -3,6 +3,37 @@ import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
 import { exec, errorText } from "../utils.ts";
 
+export class PartialPushError extends Error {
+	readonly pushedTags: string[];
+	readonly branchPushed: boolean;
+
+	constructor(message: string, pushedTags: string[], branchPushed = false) {
+		super(message);
+		this.name = "PartialPushError";
+		this.pushedTags = pushedTags;
+		this.branchPushed = branchPushed;
+	}
+}
+
+export interface RollbackPlan {
+	localTagsToDelete: string[];
+	remoteTagsToDelete: string[];
+	branchPushed: boolean;
+}
+
+export function planRollback(
+	allTags: string[],
+	pushedTags: string[],
+	branchPushed?: boolean,
+): RollbackPlan {
+	const pushedSet = new Set(pushedTags);
+	return {
+		localTagsToDelete: allTags,
+		remoteTagsToDelete: allTags.filter((t) => pushedSet.has(t)),
+		branchPushed: branchPushed ?? pushedTags.length > 0,
+	};
+}
+
 function resolveExtraTags(config: ResolvedConfig, tag: string, newVersion: string): string[] {
 	const tags = config.git.extraTags.map((tpl) =>
 		tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion),
@@ -78,12 +109,48 @@ function hasDirtyTree(cwd: string): boolean {
 	}
 }
 
+function pushTagsTracked(
+	config: ResolvedConfig,
+	tag: string,
+	newVersion: string,
+	branchPushed: boolean,
+): string[] {
+	const pushedTags: string[] = [];
+
+	try {
+		exec("git", ["push", "origin", tag], { cwd: config.root });
+		pushedTags.push(tag);
+	} catch (err) {
+		throw new PartialPushError(
+			errorText(err),
+			pushedTags,
+			branchPushed,
+		);
+	}
+
+	const extraTags = resolveExtraTags(config, tag, newVersion);
+	for (const extraTag of extraTags) {
+		try {
+			exec("git", ["push", "origin", extraTag], { cwd: config.root });
+			pushedTags.push(extraTag);
+		} catch (err) {
+			throw new PartialPushError(
+				errorText(err),
+				pushedTags,
+				branchPushed,
+			);
+		}
+	}
+
+	return pushedTags;
+}
+
 export async function pushChanges(
 	config: ResolvedConfig,
 	branch: string,
 	tag: string,
 	newVersion: string,
-): Promise<void> {
+): Promise<string[]> {
 	const spinner = p.spinner();
 	spinner.start("Pushing to GitHub");
 
@@ -180,31 +247,21 @@ export async function pushChanges(
 		const tagSpinner = p.spinner();
 		tagSpinner.start("Pushing tags");
 		try {
-			exec("git", ["push", "origin", tag], { cwd: config.root });
-
-			const extraTags = resolveExtraTags(config, tag, newVersion);
-			for (const extraTag of extraTags) {
-				exec("git", ["push", "origin", extraTag], { cwd: config.root });
-			}
+			const pushedTags = pushTagsTracked(config, tag, newVersion, true);
 			tagSpinner.stop("Pushed to GitHub");
+			return pushedTags;
 		} catch (tagErr) {
 			tagSpinner.stop(pc.red("Tag push failed"));
 			throw tagErr;
 		}
-		return;
 	}
 
 	try {
-		exec("git", ["push", "origin", tag], { cwd: config.root });
-
-		const extraTags = resolveExtraTags(config, tag, newVersion);
-		for (const extraTag of extraTags) {
-			exec("git", ["push", "origin", extraTag], { cwd: config.root });
-		}
+		const pushedTags = pushTagsTracked(config, tag, newVersion, true);
+		spinner.stop("Pushed to GitHub");
+		return pushedTags;
 	} catch (tagErr) {
 		spinner.stop(pc.red("Tag push failed"));
 		throw tagErr;
 	}
-
-	spinner.stop("Pushed to GitHub");
 }

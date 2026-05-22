@@ -10,7 +10,7 @@ import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
 import { runCleanup } from "./steps/cleanup.ts";
 import { createGithubRelease } from "./steps/github.ts";
-import { commitAndTag, pushChanges } from "./steps/git.ts";
+import { commitAndTag, pushChanges, PartialPushError, planRollback } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
@@ -80,12 +80,13 @@ function parseFlag(argv: string[], flag: string): string | undefined {
 	return argv[idx + 1];
 }
 
-function rollbackRelease(root: string, tag: string, extraTags: string[], wasPushed: boolean): void {
+function rollbackRelease(root: string, tag: string, extraTags: string[], pushedTags: string[]): void {
 	p.log.warn("Rolling back release…");
 
 	const allTags = [tag, ...extraTags];
+	const plan = planRollback(allTags, pushedTags);
 
-	for (const t of allTags) {
+	for (const t of plan.localTagsToDelete) {
 		try {
 			exec("git", ["tag", "-d", t], { cwd: root });
 		} catch {
@@ -101,12 +102,14 @@ function rollbackRelease(root: string, tag: string, extraTags: string[], wasPush
 		return;
 	}
 
-	if (wasPushed) {
-		p.log.warn("Tags and commit were already pushed to remote. Clean up manually:");
-		for (const t of allTags) {
+	if (plan.branchPushed || plan.remoteTagsToDelete.length > 0) {
+		p.log.warn("Some artifacts were already pushed to remote. Clean up manually:");
+		for (const t of plan.remoteTagsToDelete) {
 			p.log.message(`  ${pc.dim(`git push origin :refs/tags/${t}`)}`);
 		}
-		p.log.message(`  ${pc.dim("git push --force-with-lease origin HEAD")}`);
+		if (plan.branchPushed) {
+			p.log.message(`  ${pc.dim("git push --force-with-lease origin HEAD")}`);
+		}
 	}
 }
 
@@ -281,13 +284,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		}
 	}
 
-	let wasPushed = false;
+	let pushedTags: string[] = [];
 	if (config.steps.push) {
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would push branch ${pc.cyan(branch)} and tag(s) to origin`);
 		} else {
-			await pushChanges(config, branch, gitTag, newVersion);
-			wasPushed = true;
+			pushedTags = await pushChanges(config, branch, gitTag, newVersion);
 
 			if (extraTags.length) {
 				p.log.info(`Tags: ${[gitTag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
@@ -321,7 +323,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 					initialValue: true,
 				});
 				if (!p.isCancel(doRollback) && doRollback) {
-					rollbackRelease(root, gitTag, extraTags, wasPushed);
+					rollbackRelease(root, gitTag, extraTags, pushedTags);
 					p.outro(pc.yellow("Release rolled back."));
 					return;
 				}
