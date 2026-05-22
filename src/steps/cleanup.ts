@@ -3,13 +3,19 @@ import pc from "picocolors";
 import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, shell } from "../utils.ts";
+import { errorText, exec } from "../utils.ts";
 
-function detectInstallCommand(root: string): string {
-	if (existsSync(resolve(root, "bun.lockb")) || existsSync(resolve(root, "bun.lock"))) return "bun install --frozen-lockfile";
-	if (existsSync(resolve(root, "pnpm-lock.yaml"))) return "pnpm install --frozen-lockfile";
-	if (existsSync(resolve(root, "yarn.lock"))) return "yarn install --frozen-lockfile";
-	return "npm ci";
+function detectInstall(root: string): { cmd: string; args: string[] } {
+	if (existsSync(resolve(root, "bun.lockb")) || existsSync(resolve(root, "bun.lock"))) {
+		return { cmd: "bun", args: ["install", "--frozen-lockfile"] };
+	}
+	if (existsSync(resolve(root, "pnpm-lock.yaml"))) {
+		return { cmd: "pnpm", args: ["install", "--frozen-lockfile"] };
+	}
+	if (existsSync(resolve(root, "yarn.lock"))) {
+		return { cmd: "yarn", args: ["install", "--frozen-lockfile"] };
+	}
+	return { cmd: "npm", args: ["ci"] };
 }
 
 export function runCleanup(config: ResolvedConfig): void {
@@ -33,11 +39,12 @@ export function runCleanup(config: ResolvedConfig): void {
 		}
 	}
 
-	const installCmd = detectInstallCommand(config.root);
-	spinner.message(`Installing dependencies (${pc.cyan(installCmd)})`);
+	const install = detectInstall(config.root);
+	const display = `${install.cmd} ${install.args.join(" ")}`;
+	spinner.message(`Installing dependencies (${pc.cyan(display)})`);
 
 	try {
-		shell(installCmd, { cwd: config.root, stdio: "pipe" });
+		exec(install.cmd, install.args, { cwd: config.root, stdio: "pipe" });
 		spinner.stop("Clean install complete");
 	} catch (err) {
 		spinner.stop(pc.red("Install failed"));

@@ -26,11 +26,22 @@ interface PreparedProject {
 	isBeta: boolean;
 }
 
+function parseFlag(argv: string[], flag: string): string | undefined {
+	const idx = argv.indexOf(flag);
+	if (idx === -1 || idx === argv.length - 1) return undefined;
+	return argv[idx + 1];
+}
+
 export async function multiMain(argv: string[]): Promise<void> {
 	const isBeta = argv.includes("--beta");
 	const isDraft = argv.includes("--draft");
 	const isDryRun = argv.includes("--dry-run");
 	const isAnyBranch = argv.includes("--any-branch");
+	const customTag = parseFlag(argv, "--tag");
+	if (argv.includes("--tag") && !customTag) {
+		p.log.error("--tag requires a value (e.g. --tag next)");
+		process.exit(1);
+	}
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
 
 	if (process.stdout.isTTY) {
@@ -185,6 +196,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isDraft) config.github.draft = true;
 		if (isDryRun) config.dryRun = true;
 		if (isAnyBranch) config.anyBranch = true;
+		if (customTag) config.tag = customTag;
 
 		if (!isBeta && !isAnyBranch && project.branch !== config.git.releaseBranch) {
 			const canSwitch = branchExists(project.path, config.git.releaseBranch);
@@ -350,7 +362,8 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 				for (const pp of npmProjects) {
 					p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
-					const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth });
+					const distTag = pp.config.tag || undefined;
+					const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth, distTag });
 					if (!success && otp) otp = undefined;
 					results.push({ name: pp.project.dirName, success });
 				}

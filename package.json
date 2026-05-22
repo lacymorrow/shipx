@@ -7,7 +7,7 @@
     "shipx": "dist/cli.js"
   },
   "scripts": {
-    "build": "bun build src/cli.ts --outfile dist/cli.js --target node && node -e \"const f=require('fs');const c=f.readFileSync('dist/cli.js','utf8');f.writeFileSync('dist/cli.js',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
+    "build": "bun build src/cli.ts --outfile dist/cli.js --target node && node scripts/postbuild.mjs",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
     "dev": "bun run src/cli.ts"

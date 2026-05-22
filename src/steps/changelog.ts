@@ -27,13 +27,18 @@ const TYPE_LABELS: Record<string, string> = {
 
 const DISPLAY_ORDER = ["feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "style", "revert", "other"];
 
-function parseCommit(line: string): Commit {
+export function parseCommit(line: string): Commit {
 	const match = line.match(/^([a-f0-9]+)\s(.+)$/);
 	if (!match) return { hash: "", subject: line, type: "other", scope: "", description: line, breaking: false };
 
 	const hash = match[1];
 	const subject = match[2];
-	const breaking = subject.includes("!:") || subject.toLowerCase().startsWith("breaking");
+	// Conventional Commits flags a breaking change with `!` *immediately*
+	// before the `:` (optionally after a scope). The previous `includes("!:")`
+	// fired on unrelated subjects like `fix: handle !:= operator`.
+	const breaking =
+		/^\w+(?:\([^)]*\))?!:/.test(subject) ||
+		subject.toLowerCase().startsWith("breaking");
 	const ccMatch = subject.match(/^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/);
 
 	if (ccMatch) {

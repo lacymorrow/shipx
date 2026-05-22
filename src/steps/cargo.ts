@@ -33,11 +33,15 @@ export function bumpCargoWorkspaces(
 			bumped.push(relDir);
 		} catch (err) {
 			spinner.stop(pc.red(`Failed to bump Cargo versions in ${pc.cyan(relDir)}`));
-			p.log.error(errorText(err));
 			p.log.info(
 				`Install cargo-edit with: ${pc.cyan("cargo install cargo-edit")}`,
 			);
-			process.exit(1);
+			// Re-throw so cli.ts can decide whether to roll back the release
+			// commit/tag (which haven't been created yet at this point, but the
+			// surrounding pipeline still needs the chance to clean up).
+			throw new Error(
+				`cargo set-version failed in ${relDir}: ${errorText(err)}`,
+			);
 		}
 	}
 

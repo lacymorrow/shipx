@@ -46,16 +46,21 @@ export async function publishHomebrew(
 
 		const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
 		const tmpFile = join(tmpdir(), `shipx-tarball-${Date.now()}.tar.gz`);
+		let sha256: string;
 		try {
-			exec("curl", ["-sLo", tmpFile, tarballUrl]);
+			// `-f`: fail on HTTP errors (404 for an unpushed tag, 5xx from
+			// GitHub) instead of silently writing the error body into the
+			// tarball — which would otherwise be hashed and committed.
+			exec("curl", ["-fsLo", tmpFile, tarballUrl]);
+			const tarball = readFileSync(tmpFile);
+			sha256 = createHash("sha256").update(tarball).digest("hex");
 		} catch (dlErr) {
 			spinner.stop(pc.red("Failed to download tarball"));
 			p.log.error(errorText(dlErr));
+			try { unlinkSync(tmpFile); } catch {}
 			return;
 		}
-		const tarball = readFileSync(tmpFile);
 		try { unlinkSync(tmpFile); } catch {}
-		const sha256 = createHash("sha256").update(tarball).digest("hex");
 
 		if (!sha256 || sha256.length !== 64) {
 			spinner.stop(pc.red("Failed to compute SHA256"));

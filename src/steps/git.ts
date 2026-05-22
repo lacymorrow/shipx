@@ -10,8 +10,13 @@ function resolveExtraTags(config: ResolvedConfig, tag: string, newVersion: strin
 	return [...new Set(tags)].filter((t) => t !== tag);
 }
 
-function splitFlags(flags: string): string[] {
-	return flags.split(/\s+/).filter(Boolean);
+export function tagExists(cwd: string, tag: string): boolean {
+	try {
+		exec("git", ["rev-parse", "--verify", `refs/tags/${tag}`], { cwd });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export function commitAndTag(
@@ -23,6 +28,16 @@ export function commitAndTag(
 	const spinner = p.spinner();
 	spinner.start("Committing and tagging");
 
+	const allTags = [tag, ...resolveExtraTags(config, tag, newVersion)];
+	const existingTags = allTags.filter((t) => tagExists(config.root, t));
+	if (existingTags.length > 0) {
+		spinner.stop(pc.red("Tag collision"));
+		throw new Error(
+			`Tag(s) already exist locally: ${existingTags.join(", ")}. ` +
+			`Delete them (${`git tag -d ${existingTags.join(" ")}`}) and pick a higher version before retrying.`,
+		);
+	}
+
 	try {
 		if (filesToStage.length > 0) {
 			exec("git", ["add", ...filesToStage], { cwd: config.root });
@@ -31,7 +46,7 @@ export function commitAndTag(
 		const message = config.git.commitMessage.replace(/\{tag\}/g, tag);
 		exec(
 			"git",
-			["commit", "-m", message, ...splitFlags(config.git.commitFlags)],
+			["commit", "-m", message, ...config.git.commitFlags],
 			{ cwd: config.root },
 		);
 		exec("git", ["tag", tag], { cwd: config.root });
@@ -41,8 +56,8 @@ export function commitAndTag(
 			exec("git", ["tag", extraTag], { cwd: config.root });
 		}
 
-		const allTags = [tag, ...extraTags].map((t) => pc.green(t)).join(", ");
-		spinner.stop(`Committed and tagged ${allTags}`);
+		const tagSummary = [tag, ...extraTags].map((t) => pc.green(t)).join(", ");
+		spinner.stop(`Committed and tagged ${tagSummary}`);
 	} catch (err) {
 		spinner.stop(pc.red("Commit/tag failed"));
 		throw err;
@@ -75,7 +90,7 @@ export async function pushChanges(
 	try {
 		exec(
 			"git",
-			["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
+			["push", "origin", branch, ...config.git.pushFlags],
 			{ cwd: config.root },
 		);
 	} catch (err) {
@@ -119,6 +134,12 @@ export async function pushChanges(
 			pullSpinner.stop("Pulled successfully");
 		} catch (pullErr) {
 			pullSpinner.stop(pc.red("Pull failed"));
+			const allLocalTags = [tag, ...resolveExtraTags(config, tag, newVersion)];
+			p.log.warn(
+				`Rebase conflict — the release tag(s) ${allLocalTags.map((t) => pc.cyan(t)).join(", ")} were created locally but never pushed. ` +
+				`If you retry shipx, the next commit-and-tag will collide.\n` +
+				`  Delete them first: ${pc.green(`git tag -d ${allLocalTags.join(" ")}`)}`,
+			);
 			if (stashed) {
 				p.log.warn(
 					`Dirty files remain stashed as ${pc.cyan(stashMessage)}. Recover with ${pc.green("git stash pop")}.`,
@@ -147,7 +168,7 @@ export async function pushChanges(
 		try {
 			exec(
 				"git",
-				["push", "origin", branch, ...splitFlags(config.git.pushFlags)],
+				["push", "origin", branch, ...config.git.pushFlags],
 				{ cwd: config.root },
 			);
 			retrySpinner.stop("Pushed branch");

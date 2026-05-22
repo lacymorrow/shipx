@@ -82,18 +82,69 @@ function checkArchived(config: ResolvedConfig): void {
 	}
 }
 
+/**
+ * Resolve the registry that `npm publish` will actually target for this
+ * package, in order of precedence:
+ *   1. `publishConfig.registry` in package.json (always wins)
+ *   2. Scope-specific registry (`npm config get @scope:registry`) if the
+ *      package name is scoped
+ *   3. Default registry (`npm config get registry`)
+ *
+ * Used to point `npm whoami` at the same registry the publish will use —
+ * otherwise scoped packages on a private registry get a misleading
+ * "not logged in" warning even when the user is actually authenticated.
+ */
+export function resolveNpmRegistry(
+	pkg: { name?: unknown; publishConfig?: unknown },
+	cwd: string,
+): string | undefined {
+	const publishConfig = pkg.publishConfig;
+	if (publishConfig && typeof publishConfig === "object") {
+		const registry = (publishConfig as { registry?: unknown }).registry;
+		if (typeof registry === "string" && registry) return registry;
+	}
+
+	const name = typeof pkg.name === "string" ? pkg.name : "";
+	const scopeMatch = name.match(/^(@[^/]+)\//);
+	if (scopeMatch) {
+		try {
+			const scoped = exec("npm", ["config", "get", `${scopeMatch[1]}:registry`], { cwd }).trim();
+			if (scoped && scoped !== "undefined") return scoped;
+		} catch {
+			// fall through to default registry
+		}
+	}
+
+	try {
+		const def = exec("npm", ["config", "get", "registry"], { cwd }).trim();
+		if (def && def !== "undefined") return def;
+	} catch {
+		// fall through — let npm whoami pick its own default
+	}
+	return undefined;
+}
+
 function checkNpmAuth(config: ResolvedConfig): void {
 	if (!config.steps.npm) return;
 
+	const pkgPath = resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
+	let registry: string | undefined;
+	if (existsSync(pkgPath)) {
+		registry = resolveNpmRegistry(readJson(pkgPath), config.npm.cwd);
+	}
+
+	const args = ["whoami", ...(registry ? ["--registry", registry] : [])];
 	try {
-		const user = exec("npm", ["whoami"], { cwd: config.npm.cwd }).trim();
+		const user = exec("npm", args, { cwd: config.npm.cwd }).trim();
 		if (user) {
-			p.log.info(`npm: authenticated as ${pc.cyan(user)}`);
+			const where = registry ? ` (${pc.dim(registry)})` : "";
+			p.log.info(`npm: authenticated as ${pc.cyan(user)}${where}`);
 		}
 	} catch {
+		const where = registry ? ` against ${pc.cyan(registry)}` : "";
 		p.log.warn(
-			`npm: not logged in. You'll be prompted to authenticate during publish.\n` +
-			`  Run ${pc.green("npm login")} now to avoid interruptions.`,
+			`npm: not logged in${where}. You'll be prompted to authenticate during publish.\n` +
+			`  Run ${pc.green(registry ? `npm login --registry ${registry}` : "npm login")} now to avoid interruptions.`,
 		);
 	}
 }
