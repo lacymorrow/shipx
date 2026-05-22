@@ -18,6 +18,7 @@ import { runTests } from "./steps/test.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, readJson, setupCleanExit } from "./utils.ts";
+import { parseFlag } from "./args.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
@@ -72,12 +73,6 @@ ${pc.bold("CONFIG")}
 
 ${pc.dim("https://github.com/lacymorrow/shipx")}
 `);
-}
-
-function parseFlag(argv: string[], flag: string): string | undefined {
-	const idx = argv.indexOf(flag);
-	if (idx === -1 || idx === argv.length - 1) return undefined;
-	return argv[idx + 1];
 }
 
 function rollbackRelease(root: string, tag: string, extraTags: string[], wasPushed: boolean): void {
