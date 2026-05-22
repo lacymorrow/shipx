@@ -142,7 +142,7 @@ async function publishMultipleTargets(
 		const failed: NpmTarget[] = [];
 
 		for (const target of remaining) {
-			const displayName = displayNames.get(target)!;
+			const displayName = displayNames.get(target) ?? target.cwd;
 			const args = publishArgs(target.access, isBeta, opts?.distTag);
 
 			if (webAuth) {
@@ -177,7 +177,7 @@ async function publishMultipleTargets(
 
 		if (failed.length === 0) break;
 
-		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(displayNames.get(t)!)).join(", ")}`);
+		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(displayNames.get(t) ?? t.cwd)).join(", ")}`);
 
 		const action = await p.select({
 			message: "How would you like to proceed?",
