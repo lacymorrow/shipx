@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { loadConfig } from "./config.ts";
+import { runHook } from "./hooks.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
@@ -415,9 +416,11 @@ export async function multiMain(argv: string[]): Promise<void> {
 			bumpedFiles: [],
 		};
 		let changelog = `- Release ${tag}`;
+		const hookCtx = () => ({ config, version: newVersion, tag, changelog, isBeta });
 		try {
 			let cargoStageDirs: string[] = [];
 			if (config.steps.bumpVersion) {
+				await runHook("preBump", config.hooks.preBump, hookCtx());
 				if (isDryRun) {
 					const files = [...config.packageJsonPaths, ...config.bumpFiles.map((f: { path: string }) => f.path)];
 					p.log.info(`${pc.dim("[dry-run]")} Would bump: ${files.map((f: string) => pc.cyan(f)).join(", ")}`);
@@ -428,17 +431,21 @@ export async function multiMain(argv: string[]): Promise<void> {
 					pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
 					pstate.didComputeBumpedFiles = true;
 				}
+				await runHook("postBump", config.hooks.postBump, hookCtx());
 			}
 
 			if (config.steps.changelog) {
+				await runHook("preChangelog", config.hooks.preChangelog, hookCtx());
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would generate changelog`);
 				} else {
 					changelog = generateChangelog(config, tag);
 				}
+				await runHook("postChangelog", config.hooks.postChangelog, hookCtx());
 			}
 
 			if (config.steps.commit || config.steps.tag) {
+				await runHook("preCommit", config.hooks.preCommit, hookCtx());
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would commit and tag ${pc.green(tag)}`);
 				} else {
@@ -449,23 +456,28 @@ export async function multiMain(argv: string[]): Promise<void> {
 					commitAndTag(config, tag, newVersion, pstate.bumpedFiles);
 					pstate.didCommit = true;
 				}
+				await runHook("postCommit", config.hooks.postCommit, hookCtx());
 			}
 
 			if (config.steps.push) {
+				await runHook("prePush", config.hooks.prePush, hookCtx());
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would push to origin`);
 				} else {
 					await pushChanges(config, project.branch, tag, newVersion);
 					pstate.didPush = true;
 				}
+				await runHook("postPush", config.hooks.postPush, hookCtx());
 			}
 
 			if (config.steps.githubRelease) {
+				await runHook("preGithubRelease", config.hooks.preGithubRelease, hookCtx());
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release`);
 				} else {
 					createGithubRelease(config, tag, changelog, isBeta);
 				}
+				await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 			}
 
 			prepared.push({ project, config, newVersion, tag, changelog, isBeta });
@@ -515,7 +527,10 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isDryRun) {
 			p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
 			for (const pp of npmProjects) {
+				const hCtx = { config: pp.config, version: pp.newVersion, tag: pp.tag, changelog: pp.changelog, isBeta: pp.isBeta };
+				await runHook("preNpm", pp.config.hooks.preNpm, hCtx);
 				p.log.info(`${pc.dim("[dry-run]")} Would publish ${pc.cyan(pp.project.dirName)}`);
+				await runHook("postNpm", pp.config.hooks.postNpm, hCtx);
 			}
 		} else {
 			p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
@@ -527,13 +542,30 @@ export async function multiMain(argv: string[]): Promise<void> {
 			});
 
 			if (!p.isCancel(authMethod)) {
-				const batchProjects = npmProjects.map((pp) => ({
-					dirName: pp.project.dirName,
-					config: pp.config,
-					isBeta: pp.isBeta,
-					distTag: pp.config.tag || undefined,
-				}));
-				const results = await batchPublishNpm(batchProjects, authMethod);
+				const webAuth = authMethod === "web";
+				const results: { name: string; success: boolean }[] = [];
+
+				for (const pp of npmProjects) {
+					const hCtx = { config: pp.config, version: pp.newVersion, tag: pp.tag, changelog: pp.changelog, isBeta: pp.isBeta };
+					await runHook("preNpm", pp.config.hooks.preNpm, hCtx);
+
+					p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
+					let otp: string | undefined;
+					if (authMethod === "otp") {
+						const otpInput = await p.text({
+							message: `npm OTP for ${pp.project.dirName}`,
+							placeholder: "123456",
+							validate: (v) => {
+								if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+							},
+						});
+						if (!p.isCancel(otpInput)) otp = otpInput.trim();
+					}
+					const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth, distTag: pp.config.tag || undefined });
+					results.push({ name: pp.project.dirName, success });
+
+					await runHook("postNpm", pp.config.hooks.postNpm, hCtx);
+				}
 
 				const succeeded = results.filter((r) => r.success);
 				const failed = results.filter((r) => !r.success);
@@ -554,13 +586,19 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isDryRun) {
 			p.log.step(pc.bold("Phase 3: Homebrew"));
 			for (const pp of brewProjects) {
+				const hCtx = { config: pp.config, version: pp.newVersion, tag: pp.tag, changelog: pp.changelog, isBeta: pp.isBeta };
+				await runHook("preHomebrew", pp.config.hooks.preHomebrew, hCtx);
 				p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew for ${pc.cyan(pp.project.dirName)}`);
+				await runHook("postHomebrew", pp.config.hooks.postHomebrew, hCtx);
 			}
 		} else {
 			p.log.step(pc.bold("Phase 3: Homebrew"));
 			for (const pp of brewProjects) {
+				const hCtx = { config: pp.config, version: pp.newVersion, tag: pp.tag, changelog: pp.changelog, isBeta: pp.isBeta };
+				await runHook("preHomebrew", pp.config.hooks.preHomebrew, hCtx);
 				p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
 				await publishHomebrew(pp.config, pp.tag, { skipConfirm: true });
+				await runHook("postHomebrew", pp.config.hooks.postHomebrew, hCtx);
 			}
 		}
 	}

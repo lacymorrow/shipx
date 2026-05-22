@@ -57,6 +57,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		repoSlug: "",
 		commitMessage: "{formula}: update to {tag}",
 	},
+	hooks: {},
 };
 
 function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit<ResolvedConfig, "root"> {
@@ -82,6 +83,7 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 		github: { ...base.github, ...user.github },
 		npm: { ...base.npm, ...user.npm },
 		homebrew: { ...base.homebrew, ...user.homebrew },
+		hooks: { ...base.hooks, ...user.hooks },
 	};
 }
 

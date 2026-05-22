@@ -4,6 +4,42 @@ export interface BumpFileConfig {
 	replacement: (version: string) => string;
 }
 
+export interface HookContext {
+	config: ResolvedConfig;
+	/** Empty string before version selection (preBump and later have the value) */
+	version: string;
+	/** Empty string before version selection (preBump and later have the value) */
+	tag: string;
+	/** Placeholder until changelog generation (postChangelog and later have the final value) */
+	changelog: string;
+	isBeta: boolean;
+}
+
+export type HookFunction = (context: HookContext) => void | Promise<void>;
+
+export interface Hooks {
+	prePreflight?: HookFunction;
+	postPreflight?: HookFunction;
+	preCleanup?: HookFunction;
+	postCleanup?: HookFunction;
+	preTest?: HookFunction;
+	postTest?: HookFunction;
+	preBump?: HookFunction;
+	postBump?: HookFunction;
+	preChangelog?: HookFunction;
+	postChangelog?: HookFunction;
+	preCommit?: HookFunction;
+	postCommit?: HookFunction;
+	prePush?: HookFunction;
+	postPush?: HookFunction;
+	preGithubRelease?: HookFunction;
+	postGithubRelease?: HookFunction;
+	preNpm?: HookFunction;
+	postNpm?: HookFunction;
+	preHomebrew?: HookFunction;
+	postHomebrew?: HookFunction;
+}
+
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
@@ -81,6 +117,8 @@ export interface ShipConfig {
 		/** Commit message template. Use {tag} and {formula} placeholders */
 		commitMessage?: string;
 	};
+	/** Lifecycle hooks that run before/after each pipeline step */
+	hooks?: Hooks;
 }
 
 export interface ResolvedGitConfig {
@@ -92,7 +130,7 @@ export interface ResolvedGitConfig {
 	pushFlags: string[];
 }
 
-export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
+export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks">> {
 	root: string;
 	dryRun: boolean;
 	anyBranch: boolean;
@@ -102,4 +140,5 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
 	github: Required<NonNullable<ShipConfig["github"]>>;
 	npm: Required<NonNullable<ShipConfig["npm"]>>;
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
+	hooks: Hooks;
 }
