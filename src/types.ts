@@ -69,6 +69,12 @@ export interface ShipConfig {
 	github?: {
 		/** Create the release as a draft so you can review before publishing. Default: false */
 		draft?: boolean;
+		/**
+		 * Glob patterns for files to upload as release assets.
+		 * Resolved relative to the project root.
+		 * Example: ["dist/*.zip", "dist/*.tar.gz"]
+		 */
+		assets?: string[];
 	};
 	/** Homebrew tap settings */
 	homebrew?: {

@@ -46,6 +46,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	},
 	github: {
 		draft: false,
+		assets: [],
 	},
 	npm: {
 		cwd: "",

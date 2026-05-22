@@ -44,7 +44,7 @@ function makeConfig(root: string): ResolvedConfig {
 			commitFlags: ["--no-verify"],
 			pushFlags: ["--no-verify"],
 		},
-		github: { draft: false },
+		github: { draft: false, assets: [] },
 		npm: { cwd: root, access: "public" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
 	};

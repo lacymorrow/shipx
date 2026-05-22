@@ -372,7 +372,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (config.steps.githubRelease) {
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${config.github.draft ? " (draft)" : ""}`);
+			const draftLabel = config.github.draft ? " (draft)" : "";
+			const assetLabel = config.github.assets.length
+				? ` with assets: ${config.github.assets.map((a) => pc.cyan(a)).join(", ")}`
+				: "";
+			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${draftLabel}${assetLabel}`);
 		} else {
 			createGithubRelease(config, gitTag, changelog, isBeta);
 		}
