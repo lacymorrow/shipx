@@ -20,7 +20,7 @@ import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, parseFlag, readJson, setupCleanExit } from "./utils.ts";
 
-export type { ShipConfig, BumpFileConfig, Hooks, HookFunction, HookContext } from "./types.ts";
+export type { ShipConfig, BumpFileConfig, Hooks, HookFunction, HookContext, NpmTarget } from "./types.ts";
 
 setupCleanExit();
 
@@ -404,7 +404,14 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (config.steps.npm) {
 		await runHook("preNpm", config.hooks.preNpm, hookCtx());
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.access}, tag=${distTag}`);
+			if (config.npm.targets.length > 1) {
+				p.log.info(`${pc.dim("[dry-run]")} Would publish ${pc.cyan(String(config.npm.targets.length))} npm targets with tag=${distTag}`);
+				for (const target of config.npm.targets) {
+					p.log.message(`  ${pc.dim("→")} ${pc.cyan(target.cwd)} (access=${target.access})`);
+				}
+			} else {
+				p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.targets[0].access}, tag=${distTag}`);
+			}
 		} else {
 			const published = await publishNpm(config, isBeta, { distTag: customTag });
 			if (!published && (config.steps.commit || config.steps.tag)) {

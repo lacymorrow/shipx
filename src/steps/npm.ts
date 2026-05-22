@@ -1,7 +1,8 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec } from "../utils.ts";
+import { resolve } from "node:path";
+import type { NpmTarget, ResolvedConfig } from "../types.ts";
+import { errorText, exec, readJson } from "../utils.ts";
 
 function isNpmLoggedIn(cwd?: string): string | false {
 	try {
@@ -67,12 +68,165 @@ function tryWebPublish(args: string[], cwd?: string): boolean {
 	}
 }
 
+function targetDisplayName(target: NpmTarget): string {
+	try {
+		const pkg = readJson(resolve(target.cwd, "package.json"));
+		if (typeof pkg.name === "string") return pkg.name;
+	} catch { /* fall through */ }
+	return target.cwd;
+}
+
+async function publishMultipleTargets(
+	targets: NpmTarget[],
+	isBeta: boolean,
+	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
+): Promise<boolean> {
+	if (!await ensureNpmAuth(targets[0].cwd)) {
+		const skip = await p.confirm({
+			message: "Continue without npm login?",
+			initialValue: false,
+		});
+		if (p.isCancel(skip) || !skip) {
+			p.log.info("Skipping npm publish");
+			return false;
+		}
+	}
+
+	p.log.info(`Publishing ${pc.cyan(String(targets.length))} npm packages`);
+
+	let otp = opts?.otp;
+	let webAuth = opts?.webAuth ?? false;
+
+	if (!otp && !webAuth) {
+		const authMethod = await p.select({
+			message: `Authentication for ${targets.length} packages`,
+			options: [
+				{ value: "web" as const, label: "Web auth (passkey)", hint: "authenticate each publish in browser" },
+				{ value: "otp" as const, label: "Enter OTP", hint: "reused across all targets" },
+				{ value: "none" as const, label: "No auth needed", hint: "token already configured" },
+			],
+		});
+
+		if (p.isCancel(authMethod)) {
+			p.log.info("Skipping npm publish");
+			return false;
+		}
+
+		if (authMethod === "otp") {
+			const otpInput = await p.text({
+				message: "npm OTP (reused for all targets)",
+				placeholder: "123456",
+				validate: (v) => {
+					if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+				},
+			});
+			if (p.isCancel(otpInput)) {
+				p.log.info("Skipping npm publish");
+				return false;
+			}
+			otp = otpInput.trim();
+		} else if (authMethod === "web") {
+			webAuth = true;
+		}
+	}
+
+	let remaining = [...targets];
+	const allResults: { name: string; success: boolean }[] = [];
+
+	while (remaining.length > 0) {
+		const failed: NpmTarget[] = [];
+
+		for (const target of remaining) {
+			const displayName = targetDisplayName(target);
+			const args = publishArgs(target.access, isBeta, opts?.distTag);
+
+			if (webAuth) {
+				p.log.message(`  ${pc.cyan("→")} ${displayName}`);
+				if (tryWebPublish(args, target.cwd)) {
+					p.log.success(`  Published ${pc.green(displayName)}`);
+					allResults.push({ name: displayName, success: true });
+				} else {
+					p.log.error(`  Failed to publish ${displayName}`);
+					allResults.push({ name: displayName, success: false });
+					failed.push(target);
+				}
+				continue;
+			}
+
+			const attemptArgs = [...args];
+			if (otp) attemptArgs.push("--otp", otp);
+
+			const spinner = p.spinner();
+			spinner.start(`Publishing ${displayName}`);
+			try {
+				exec("npm", attemptArgs, { cwd: target.cwd });
+				spinner.stop(pc.green(`Published ${displayName}`));
+				allResults.push({ name: displayName, success: true });
+			} catch (err) {
+				spinner.stop(pc.red(`Failed to publish ${displayName}`));
+				p.log.message(pc.dim(errorText(err)));
+				allResults.push({ name: displayName, success: false });
+				failed.push(target);
+			}
+		}
+
+		if (failed.length === 0) break;
+
+		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(targetDisplayName(t))).join(", ")}`);
+
+		const action = await p.select({
+			message: "How would you like to proceed?",
+			options: [
+				{ value: "otp" as const, label: "Retry with new OTP", hint: "enter a fresh code and retry failed targets" },
+				{ value: "web" as const, label: "Retry with web auth", hint: "authenticate each in browser" },
+				{ value: "retry" as const, label: "Retry as-is", hint: "retry without changing auth" },
+				{ value: "skip" as const, label: "Skip failed targets", hint: "continue to next step" },
+			],
+		});
+
+		if (p.isCancel(action) || action === "skip") break;
+
+		if (action === "otp") {
+			const newOtp = await p.text({
+				message: "npm OTP",
+				placeholder: "123456",
+				validate: (v) => {
+					if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+				},
+			});
+			if (p.isCancel(newOtp)) break;
+			otp = newOtp.trim();
+			webAuth = false;
+		} else if (action === "web") {
+			webAuth = true;
+			otp = undefined;
+		}
+
+		remaining = failed;
+	}
+
+	const succeeded = allResults.filter((r) => r.success);
+	const failedResults = allResults.filter((r) => !r.success);
+	if (succeeded.length) {
+		p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
+	}
+	if (failedResults.length) {
+		p.log.warn(`Failed: ${failedResults.map((r) => pc.yellow(r.name)).join(", ")}`);
+	}
+
+	return failedResults.length === 0;
+}
+
 export async function publishNpm(
 	config: ResolvedConfig,
 	isBeta: boolean,
 	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
 ): Promise<boolean> {
-	const { cwd, access } = config.npm;
+	if (config.npm.targets.length > 1) {
+		return publishMultipleTargets(config.npm.targets, isBeta, opts);
+	}
+
+	const { cwd, access } = config.npm.targets[0];
 
 	if (!await ensureNpmAuth(cwd)) {
 		const skip = await p.confirm({

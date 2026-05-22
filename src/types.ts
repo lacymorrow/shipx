@@ -40,6 +40,12 @@ export interface Hooks {
 	postHomebrew?: HookFunction;
 }
 
+export interface NpmTarget {
+	cwd: string;
+	access: "public" | "restricted";
+}
+
+
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
@@ -100,6 +106,12 @@ export interface ShipConfig {
 		cwd?: string;
 		/** npm publish access. Default: 'public' */
 		access?: "public" | "restricted";
+		/**
+		 * Multiple npm publish targets. When set, each target is published
+		 * separately with OTP collected once and reused across all targets.
+		 * If omitted, a single target is synthesized from cwd/access.
+		 */
+		targets?: Array<{ cwd?: string; access?: "public" | "restricted" }>;
 	};
 	/** GitHub release settings */
 	github?: {
@@ -138,7 +150,11 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
 	git: ResolvedGitConfig;
 	github: Required<NonNullable<ShipConfig["github"]>>;
-	npm: Required<NonNullable<ShipConfig["npm"]>>;
+	npm: {
+		cwd: string;
+		access: "public" | "restricted";
+		targets: NpmTarget[];
+	};
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
 	hooks: Hooks;
 }
