@@ -56,6 +56,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		github: { draft: false },
 		npm: { cwd: `/tmp/fake/${name}`, access: "public" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "" },
+		hooks: {},
 	};
 }
 

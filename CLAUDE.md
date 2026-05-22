@@ -26,7 +26,7 @@ There are no tests. Use `typecheck` + manual dev runs against a scratch repo.
 
 ## Architecture
 
-Single entry point `src/cli.ts` calls `loadConfig()` then invokes step modules in a fixed order. Steps are not pluggable — adding a step means editing both `cli.ts` and `types.ts` (`ShipConfig.steps`).
+Single entry point `src/cli.ts` calls `loadConfig()` then invokes step modules in a fixed order. Steps are not pluggable — adding a step means editing both `cli.ts` and `types.ts` (`ShipConfig.steps`). However, lifecycle hooks (`hooks` in config) run before/after each step, allowing custom logic without modifying the pipeline. See `src/types.ts` for the `Hooks` interface and `src/hooks.ts` for the runner.
 
 ### Config resolution (`src/config.ts`)
 

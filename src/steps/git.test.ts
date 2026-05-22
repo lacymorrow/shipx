@@ -47,6 +47,7 @@ function makeConfig(root: string): ResolvedConfig {
 		github: { draft: false },
 		npm: { cwd: root, access: "public" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "" },
+		hooks: {},
 	};
 }
 

@@ -27,6 +27,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		github: { draft: false },
 		npm: { cwd: root, access: "public" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "" },
+		hooks: {},
 		...overrides,
 	};
 }
