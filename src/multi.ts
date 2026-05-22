@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
@@ -12,7 +13,7 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
-import { branchExists, errorText, exec, setupCleanExit } from "./utils.ts";
+import { branchExists, errorText, exec, readJson, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 setupCleanExit();
@@ -385,7 +386,9 @@ export async function multiMain(argv: string[]): Promise<void> {
 			}
 		}
 
-		let baseVersion = project.version;
+		let baseVersion = config.versionSource
+			? (readJson(resolve(project.path, config.versionSource)).version as string) || project.version
+			: project.version;
 		if (config.steps.npm && project.hasNpm) {
 			baseVersion = await reconcileRegistryVersion(
 				project.name,

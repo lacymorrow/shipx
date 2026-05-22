@@ -7,6 +7,13 @@ export interface BumpFileConfig {
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
+	/**
+	 * Path to the package.json whose `version` field is the source of truth
+	 * for the current version (relative to project root).
+	 * Useful in monorepos where the root package.json has no version.
+	 * When omitted, defaults to `packageJsonPaths[0]`.
+	 */
+	versionSource?: string;
 	/** Additional files with regex-based version bumping */
 	bumpFiles?: BumpFileConfig[];
 	/**

@@ -203,12 +203,17 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(1);
 	}
 
-	const rootPkg = readJson(pkgJsonPaths[0]);
-	const currentVersion = rootPkg.version as string;
+	const versionSourcePath = config.versionSource
+		? resolve(root, config.versionSource)
+		: pkgJsonPaths[0];
+	const versionPkg = readJson(versionSourcePath);
+	const currentVersion = versionPkg.version as string;
 	if (!currentVersion) {
-		p.log.error(`No version found in ${pc.cyan(pkgJsonPaths[0])}`);
+		p.log.error(`No version found in ${pc.cyan(versionSourcePath)}`);
 		process.exit(1);
 	}
+
+	const rootPkg = config.versionSource ? readJson(pkgJsonPaths[0]) : versionPkg;
 
 	let projectName = "shipx";
 	if (typeof rootPkg.name === "string") {

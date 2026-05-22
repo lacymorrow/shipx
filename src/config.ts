@@ -17,6 +17,7 @@ export function normalizeFlags(input: string | string[] | undefined): string[] {
 
 const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	packageJsonPaths: [],
+	versionSource: "",
 	bumpFiles: [],
 	cargoWorkspaces: [],
 	dryRun: false,
@@ -62,6 +63,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit<ResolvedConfig, "root"> {
 	return {
 		packageJsonPaths: user.packageJsonPaths ?? base.packageJsonPaths,
+		versionSource: user.versionSource ?? base.versionSource,
 		bumpFiles: user.bumpFiles ?? base.bumpFiles,
 		cargoWorkspaces: user.cargoWorkspaces ?? base.cargoWorkspaces,
 		dryRun: base.dryRun,

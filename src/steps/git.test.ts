@@ -30,6 +30,7 @@ function makeConfig(root: string): ResolvedConfig {
 		anyBranch: false,
 		tag: "",
 		packageJsonPaths: [],
+		versionSource: "",
 		bumpFiles: [],
 		cargoWorkspaces: [],
 		testScript: "test",

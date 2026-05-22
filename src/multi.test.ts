@@ -41,6 +41,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		anyBranch: false,
 		tag: "v1.0.0",
 		packageJsonPaths: ["package.json"],
+		versionSource: "",
 		bumpFiles: [],
 		cargoWorkspaces: [],
 		testScript: "test",

@@ -12,6 +12,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		anyBranch: false,
 		tag: "",
 		packageJsonPaths: [],
+		versionSource: "",
 		bumpFiles: [],
 		cargoWorkspaces: [],
 		testScript: "test",
