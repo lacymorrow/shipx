@@ -70,6 +70,7 @@ export function createGithubRelease(
 
 	const releaseNotes = `## Changes\n\n${changelog}`;
 
+	let url = "";
 	try {
 		const result = exec(
 			"gh",
@@ -83,15 +84,10 @@ export function createGithubRelease(
 			{ cwd: config.root },
 		);
 
-		const url = result.trim();
+		url = result.trim();
 
 		if (isDraft) {
-			spinner.stop(`Draft release created — edit and publish at ${pc.cyan(url)}`);
-			try {
-				exec("open", [url]);
-			} catch {
-				// non-macOS or no browser — URL is already printed
-			}
+			spinner.stop(`Draft release created — ${pc.cyan(url)}`);
 		} else {
 			spinner.stop("GitHub release created");
 		}
@@ -111,18 +107,26 @@ export function createGithubRelease(
 		const files = resolveGlobs(config.root, assetPatterns);
 		if (files.length === 0) {
 			p.log.warn(`No files matched asset patterns: ${assetPatterns.map((a) => pc.cyan(a)).join(", ")}`);
-			return true;
-		}
-
-		const assetSpinner = p.spinner();
-		assetSpinner.start(`Uploading ${files.length} release asset(s)`);
-
-		const { uploaded, failed } = uploadAssets(config, tag, files);
-
-		if (failed.length > 0) {
-			assetSpinner.stop(pc.yellow(`Uploaded ${uploaded.length}/${files.length} assets (${failed.length} failed)`));
 		} else {
-			assetSpinner.stop(`Uploaded ${uploaded.length} release asset(s)`);
+			const assetSpinner = p.spinner();
+			assetSpinner.start(`Uploading ${files.length} release asset(s)`);
+
+			const { uploaded, failed } = uploadAssets(config, tag, files);
+
+			if (failed.length > 0) {
+				assetSpinner.stop(pc.yellow(`Uploaded ${uploaded.length}/${files.length} assets (${failed.length} failed)`));
+			} else {
+				assetSpinner.stop(`Uploaded ${uploaded.length} release asset(s)`);
+			}
+		}
+	}
+
+	if (isDraft && url) {
+		p.log.info(`Review and publish at ${pc.cyan(url)}`);
+		try {
+			exec("open", [url]);
+		} catch {
+			// non-macOS or no browser — URL is already printed
 		}
 	}
 

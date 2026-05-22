@@ -4,9 +4,21 @@ export interface BumpFileConfig {
 	replacement: (version: string) => string;
 }
 
+export interface NpmTarget {
+	cwd: string;
+	access: "public" | "restricted";
+}
+
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
+	/**
+	 * Path to the package.json whose `version` field is the source of truth
+	 * for the current version (relative to project root).
+	 * Useful in monorepos where the root package.json has no version.
+	 * When omitted, defaults to `packageJsonPaths[0]`.
+	 */
+	versionSource?: string;
 	/** Additional files with regex-based version bumping */
 	bumpFiles?: BumpFileConfig[];
 	/**
@@ -64,6 +76,12 @@ export interface ShipConfig {
 		cwd?: string;
 		/** npm publish access. Default: 'public' */
 		access?: "public" | "restricted";
+		/**
+		 * Multiple npm publish targets. When set, each target is published
+		 * separately with OTP collected once and reused across all targets.
+		 * If omitted, a single target is synthesized from cwd/access.
+		 */
+		targets?: Array<{ cwd?: string; access?: "public" | "restricted" }>;
 	};
 	/** GitHub release settings */
 	github?: {
@@ -72,6 +90,8 @@ export interface ShipConfig {
 		/**
 		 * Glob patterns for files to upload as release assets.
 		 * Resolved relative to the project root.
+		 * Only `*` wildcards are supported (single directory level).
+		 * `**`, `?`, brackets, and braces are not supported.
 		 * Example: ["dist/*.zip", "dist/*.tar.gz"]
 		 */
 		assets?: string[];
@@ -118,6 +138,10 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
 	git: ResolvedGitConfig;
 	github: Required<NonNullable<ShipConfig["github"]>>;
-	npm: Required<NonNullable<ShipConfig["npm"]>>;
+	npm: {
+		cwd: string;
+		access: "public" | "restricted";
+		targets: NpmTarget[];
+	};
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
 }
