@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import type { ResolvedConfig } from "../types.ts";
 import { exec } from "../utils.ts";
 
-interface Commit {
+export interface Commit {
 	hash: string;
 	subject: string;
 	type: string;
@@ -56,7 +56,7 @@ export function parseCommit(line: string): Commit {
 	return { hash, subject, type: "other", scope: "", description: subject, breaking };
 }
 
-function formatGrouped(commits: Commit[]): string {
+export function formatGrouped(commits: Commit[]): string {
 	const groups = new Map<string, Commit[]>();
 	for (const commit of commits) {
 		const key = commit.type;
