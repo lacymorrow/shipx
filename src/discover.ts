@@ -39,10 +39,10 @@ printf '%s\\n%s\\n%s\\n%s\\n%s\\n' "$tag" "$cc" "$branch" "$dirty" "$remote"
 `;
 
 function collectGitMeta(dir: string): Promise<GitMeta> {
-	return new Promise((resolve) => {
+	return new Promise((res) => {
 		execFile("sh", ["-c", GIT_META_SCRIPT], { cwd: dir, encoding: "utf-8", timeout: 10_000 }, (err, stdout) => {
 			if (err) {
-				resolve({ isGitRepo: false, lastTag: "", changeCount: 0, branch: "unknown", dirty: false, slug: null });
+				res({ isGitRepo: false, lastTag: "", changeCount: 0, branch: "unknown", dirty: false, slug: null });
 				return;
 			}
 			const lines = stdout.split("\n");
@@ -51,7 +51,7 @@ function collectGitMeta(dir: string): Promise<GitMeta> {
 			const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
 			if (match) slug = `${match[1]}/${match[2]}`;
 
-			resolve({
+			res({
 				isGitRepo: true,
 				lastTag: (lines[0] ?? "").trim(),
 				changeCount: parseInt((lines[1] ?? "0").trim(), 10) || 0,
@@ -103,9 +103,10 @@ function checkArchivedBatch(slugsByIndex: Map<number, string>): Map<number, bool
 }
 
 function buildArchivedQuery(slugs: string[]): string {
+	const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "");
 	const fields = slugs.map((slug, i) => {
 		const [owner, name] = slug.split("/");
-		return `r${i}: repository(owner: "${owner}", name: "${name}") { isArchived }`;
+		return `r${i}: repository(owner: "${safe(owner)}", name: "${safe(name)}") { isArchived }`;
 	});
 	return `{ ${fields.join(" ")} }`;
 }
