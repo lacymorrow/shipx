@@ -29,6 +29,7 @@ interface GitMeta {
 }
 
 const GIT_META_SCRIPT = `
+git rev-parse --git-dir >/dev/null 2>&1 || exit 1
 tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 if [ -n "$tag" ]; then cc=$(git rev-list --count "$tag..HEAD" 2>/dev/null || echo "0")
 else cc=$(git rev-list --count HEAD 2>/dev/null || echo "0"); fi
