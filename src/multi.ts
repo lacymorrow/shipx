@@ -99,6 +99,80 @@ export async function batchPublishNpm(
 
 	return results;
 }
+
+export interface PipelineState {
+	didBump: boolean;
+	didCommit: boolean;
+	didPush: boolean;
+	didComputeBumpedFiles: boolean;
+	bumpedFiles: string[];
+}
+
+export interface PipelineFailureResult {
+	needsRollback: boolean;
+	canContinueToPublish: boolean;
+	partialStateWarning: string;
+}
+
+export function classifyPipelineFailure(state: PipelineState): PipelineFailureResult {
+	if (!state.didBump && !state.didCommit && !state.didPush) {
+		return { needsRollback: false, canContinueToPublish: false, partialStateWarning: "" };
+	}
+	if (state.didPush) {
+		return {
+			needsRollback: false,
+			canContinueToPublish: true,
+			partialStateWarning: "Commit and tag were pushed to remote — project can still be published",
+		};
+	}
+	if (state.didCommit) {
+		return {
+			needsRollback: true,
+			canContinueToPublish: false,
+			partialStateWarning: "Commit and tag exist locally but were not pushed",
+		};
+	}
+	return {
+		needsRollback: true,
+		canContinueToPublish: false,
+		partialStateWarning: "Version files were bumped but not committed",
+	};
+}
+
+function rollbackProjectRelease(
+	root: string,
+	tag: string,
+	extraTags: string[],
+	state: PipelineState,
+): void {
+	const allTags = [tag, ...extraTags];
+
+	if (state.didCommit) {
+		for (const t of allTags) {
+			try {
+				exec("git", ["tag", "-d", t], { cwd: root });
+			} catch {
+				// tag may not exist
+			}
+		}
+		try {
+			exec("git", ["reset", "--soft", "HEAD~1"], { cwd: root });
+			p.log.info("Rolled back locally: removed tag(s) and undid release commit");
+		} catch {
+			p.log.error("Failed to reset commit — you may need to clean up manually");
+		}
+	}
+
+	if (state.didBump && !state.didCommit && state.bumpedFiles.length) {
+		try {
+			exec("git", ["checkout", "--", ...state.bumpedFiles], { cwd: root });
+			p.log.info("Reverted bumped files");
+		} catch {
+			p.log.error("Failed to revert bumped files — you may need to clean up manually");
+		}
+	}
+}
+
 interface PreparedProject {
 	project: DiscoveredProject;
 	config: ResolvedConfig;
@@ -333,6 +407,14 @@ export async function multiMain(argv: string[]): Promise<void> {
 			continue;
 		}
 
+		const pstate: PipelineState = {
+			didBump: false,
+			didCommit: false,
+			didPush: false,
+			didComputeBumpedFiles: false,
+			bumpedFiles: [],
+		};
+		let changelog = `- Release ${tag}`;
 		try {
 			let cargoStageDirs: string[] = [];
 			if (config.steps.bumpVersion) {
@@ -342,10 +424,12 @@ export async function multiMain(argv: string[]): Promise<void> {
 				} else {
 					bumpVersionFiles(config, newVersion);
 					cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+					pstate.didBump = true;
+					pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+					pstate.didComputeBumpedFiles = true;
 				}
 			}
 
-			let changelog = `- Release ${tag}`;
 			if (config.steps.changelog) {
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would generate changelog`);
@@ -358,8 +442,12 @@ export async function multiMain(argv: string[]): Promise<void> {
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would commit and tag ${pc.green(tag)}`);
 				} else {
-					const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
-					commitAndTag(config, tag, newVersion, filesToStage);
+					if (!pstate.didComputeBumpedFiles) {
+						pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+						pstate.didComputeBumpedFiles = true;
+					}
+					commitAndTag(config, tag, newVersion, pstate.bumpedFiles);
+					pstate.didCommit = true;
 				}
 			}
 
@@ -368,6 +456,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 					p.log.info(`${pc.dim("[dry-run]")} Would push to origin`);
 				} else {
 					await pushChanges(config, project.branch, tag, newVersion);
+					pstate.didPush = true;
 				}
 			}
 
@@ -382,6 +471,29 @@ export async function multiMain(argv: string[]): Promise<void> {
 			prepared.push({ project, config, newVersion, tag, changelog, isBeta });
 		} catch (err) {
 			p.log.error(`${project.dirName}: ${errorText(err)}`);
+
+			const extraTags = config.git.extraTags
+				.map((tpl) => tpl.replace(/\{tag\}/g, tag).replace(/\{version\}/g, newVersion))
+				.filter((t) => t !== tag);
+			const failure = classifyPipelineFailure(pstate);
+
+			if (failure.partialStateWarning) {
+				p.log.warn(`${project.dirName}: ${failure.partialStateWarning}`);
+			}
+
+			if (failure.canContinueToPublish) {
+				prepared.push({ project, config, newVersion, tag, changelog, isBeta });
+				p.log.info(`${project.dirName} will still proceed to npm publish`);
+			} else if (failure.needsRollback) {
+				const doRollback = await p.confirm({
+					message: `Roll back the partial release for ${project.dirName}?`,
+					initialValue: true,
+				});
+				if (!p.isCancel(doRollback) && doRollback) {
+					rollbackProjectRelease(config.root, tag, extraTags, pstate);
+				}
+			}
+
 			const cont = await p.confirm({
 				message: "Continue with remaining projects?",
 				initialValue: true,
