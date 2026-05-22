@@ -1,6 +1,7 @@
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { exec, isGitRepo, isRepoArchived, readJson } from "./utils.ts";
+import { readJson } from "./utils.ts";
 
 export interface DiscoveredProject {
 	/** npm package name from package.json */
@@ -18,43 +19,95 @@ export interface DiscoveredProject {
 	archived: boolean;
 }
 
-function getLastTag(dir: string): string {
-	try {
-		return exec("git", ["describe", "--tags", "--abbrev=0"], { cwd: dir }).trim();
-	} catch {
-		return "";
-	}
+interface GitMeta {
+	isGitRepo: boolean;
+	lastTag: string;
+	changeCount: number;
+	branch: string;
+	dirty: boolean;
+	slug: string | null;
 }
 
-function getCommitsSinceTag(dir: string, tag: string): number {
-	try {
-		const range = tag ? `${tag}..HEAD` : "HEAD";
-		const log = exec("git", ["rev-list", "--count", range], { cwd: dir }).trim();
-		return parseInt(log, 10) || 0;
-	} catch {
-		return 0;
-	}
+const GIT_META_SCRIPT = `
+tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [ -n "$tag" ]; then cc=$(git rev-list --count "$tag..HEAD" 2>/dev/null || echo "0")
+else cc=$(git rev-list --count HEAD 2>/dev/null || echo "0"); fi
+branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+dirty=$(git status --porcelain 2>/dev/null | head -1)
+remote=$(git remote get-url origin 2>/dev/null || echo "")
+printf '%s\\n%s\\n%s\\n%s\\n%s\\n' "$tag" "$cc" "$branch" "$dirty" "$remote"
+`;
+
+function collectGitMeta(dir: string): Promise<GitMeta> {
+	return new Promise((resolve) => {
+		execFile("sh", ["-c", GIT_META_SCRIPT], { cwd: dir, encoding: "utf-8", timeout: 10_000 }, (err, stdout) => {
+			if (err) {
+				resolve({ isGitRepo: false, lastTag: "", changeCount: 0, branch: "unknown", dirty: false, slug: null });
+				return;
+			}
+			const lines = stdout.split("\n");
+			const remoteUrl = (lines[4] ?? "").trim();
+			let slug: string | null = null;
+			const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+			if (match) slug = `${match[1]}/${match[2]}`;
+
+			resolve({
+				isGitRepo: true,
+				lastTag: (lines[0] ?? "").trim(),
+				changeCount: parseInt((lines[1] ?? "0").trim(), 10) || 0,
+				branch: (lines[2] ?? "unknown").trim() || "unknown",
+				dirty: (lines[3] ?? "").trim().length > 0,
+				slug,
+			});
+		});
+	});
 }
 
-function getCurrentBranch(dir: string): string {
-	try {
-		return exec("git", ["branch", "--show-current"], { cwd: dir }).trim();
-	} catch {
-		return "unknown";
+async function parallel<T>(fns: (() => Promise<T>)[], limit: number): Promise<T[]> {
+	const results: T[] = new Array(fns.length);
+	let next = 0;
+	async function worker() {
+		while (next < fns.length) {
+			const idx = next++;
+			results[idx] = await fns[idx]();
+		}
 	}
+	await Promise.all(Array.from({ length: Math.min(limit, fns.length) }, () => worker()));
+	return results;
 }
 
-function isDirty(dir: string): boolean {
+function checkArchivedBatch(slugsByIndex: Map<number, string>): Map<number, boolean> {
+	const results = new Map<number, boolean>();
+	if (slugsByIndex.size === 0) return results;
+
+	const slugs = [...slugsByIndex.values()];
 	try {
-		const status = exec("git", ["status", "--porcelain"], { cwd: dir }).trim();
-		return status.length > 0;
+		const output = execFileSync(
+			"gh",
+			["api", "graphql", "-f", `query=${buildArchivedQuery(slugs)}`],
+			{ encoding: "utf-8", stdio: "pipe", timeout: 15_000 },
+		);
+		const data = JSON.parse(output) as { data?: Record<string, { isArchived?: boolean } | null> };
+		if (!data.data) return results;
+
+		let i = 0;
+		for (const [idx] of slugsByIndex) {
+			const node = data.data[`r${i}`];
+			results.set(idx, node?.isArchived === true);
+			i++;
+		}
 	} catch {
-		return true;
+		// gh CLI missing, not authed, or rate-limited — treat all as non-archived
 	}
+	return results;
 }
 
-function tick(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 0));
+function buildArchivedQuery(slugs: string[]): string {
+	const fields = slugs.map((slug, i) => {
+		const [owner, name] = slug.split("/");
+		return `r${i}: repository(owner: "${owner}", name: "${name}") { isArchived }`;
+	});
+	return `{ ${fields.join(" ")} }`;
 }
 
 export interface DiscoverResult {
@@ -62,15 +115,24 @@ export interface DiscoverResult {
 	skipped: string[];
 }
 
+interface PkgCandidate {
+	fullPath: string;
+	dirName: string;
+	name: string;
+	version: string;
+	isPrivate: boolean;
+}
+
 export async function discoverProjects(
 	parentDir: string,
 	onProgress?: (scanned: number, found: number, current: string) => void,
 ): Promise<DiscoverResult> {
 	const entries = readdirSync(parentDir);
-	const projects: DiscoveredProject[] = [];
+	const candidates: PkgCandidate[] = [];
 	const skipped: string[] = [];
 	let scanned = 0;
 
+	// Phase 1: fast filesystem scan — read package.json, no subprocesses
 	for (const entry of entries) {
 		if (entry.startsWith(".") || entry === "node_modules") continue;
 
@@ -82,12 +144,9 @@ export async function discoverProjects(
 		}
 
 		scanned++;
-		onProgress?.(scanned, projects.length, entry);
-		await tick();
 
 		const pkgPath = resolve(fullPath, "package.json");
 		if (!existsSync(pkgPath)) continue;
-		if (!isGitRepo(fullPath)) continue;
 
 		let pkg: Record<string, unknown>;
 		try {
@@ -101,29 +160,54 @@ export async function discoverProjects(
 		}
 
 		const dirName = basename(fullPath);
-		const name = (typeof pkg.name === "string" ? pkg.name : dirName);
-		const version = (typeof pkg.version === "string" ? pkg.version : "0.0.0");
-		const isPrivate = pkg.private === true;
+		candidates.push({
+			fullPath,
+			dirName,
+			name: typeof pkg.name === "string" ? pkg.name : dirName,
+			version: typeof pkg.version === "string" ? pkg.version : "0.0.0",
+			isPrivate: pkg.private === true,
+		});
+	}
 
-		const lastTag = getLastTag(fullPath);
-		const changeCount = getCommitsSinceTag(fullPath, lastTag);
-		const branch = getCurrentBranch(fullPath);
-		const dirty = isDirty(fullPath);
-		const archived = isRepoArchived(fullPath) === true;
+	onProgress?.(scanned, candidates.length, "collecting git info…");
+
+	// Phase 2: parallel git metadata collection with bounded concurrency
+	const gitResults = await parallel(candidates.map((c) => () => collectGitMeta(c.fullPath)), 16);
+
+	const projects: DiscoveredProject[] = [];
+	const projectSlugs: (string | null)[] = [];
+	for (let i = 0; i < candidates.length; i++) {
+		const c = candidates[i];
+		const g = gitResults[i];
+		if (!g.isGitRepo) continue;
 
 		projects.push({
-			name,
-			dirName,
-			path: fullPath,
-			version,
-			private: isPrivate,
-			hasNpm: !isPrivate,
-			changeCount,
-			lastTag,
-			branch,
-			dirty,
-			archived,
+			name: c.name,
+			dirName: c.dirName,
+			path: c.fullPath,
+			version: c.version,
+			private: c.isPrivate,
+			hasNpm: !c.isPrivate,
+			changeCount: g.changeCount,
+			lastTag: g.lastTag,
+			branch: g.branch,
+			dirty: g.dirty,
+			archived: false,
 		});
+		projectSlugs.push(g.slug);
+	}
+
+	onProgress?.(scanned, projects.length, "checking archived status…");
+
+	// Phase 3: single GraphQL call for archived status
+	const slugsByIndex = new Map<number, string>();
+	for (let i = 0; i < projects.length; i++) {
+		const slug = projectSlugs[i];
+		if (slug) slugsByIndex.set(i, slug);
+	}
+	const archivedResults = checkArchivedBatch(slugsByIndex);
+	for (const [idx, isArchived] of archivedResults) {
+		projects[idx].archived = isArchived;
 	}
 
 	return {
