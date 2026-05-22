@@ -131,23 +131,28 @@ async function publishMultipleTargets(
 	}
 
 	let remaining = [...targets];
-	const allResults: { name: string; success: boolean }[] = [];
+	const results = new Map<NpmTarget, { name: string; success: boolean }>();
+	const displayNames = new Map<NpmTarget, string>();
+
+	for (const target of targets) {
+		displayNames.set(target, targetDisplayName(target));
+	}
 
 	while (remaining.length > 0) {
 		const failed: NpmTarget[] = [];
 
 		for (const target of remaining) {
-			const displayName = targetDisplayName(target);
+			const displayName = displayNames.get(target)!;
 			const args = publishArgs(target.access, isBeta, opts?.distTag);
 
 			if (webAuth) {
 				p.log.message(`  ${pc.cyan("→")} ${displayName}`);
 				if (tryWebPublish(args, target.cwd)) {
 					p.log.success(`  Published ${pc.green(displayName)}`);
-					allResults.push({ name: displayName, success: true });
+					results.set(target, { name: displayName, success: true });
 				} else {
 					p.log.error(`  Failed to publish ${displayName}`);
-					allResults.push({ name: displayName, success: false });
+					results.set(target, { name: displayName, success: false });
 					failed.push(target);
 				}
 				continue;
@@ -161,18 +166,18 @@ async function publishMultipleTargets(
 			try {
 				exec("npm", attemptArgs, { cwd: target.cwd });
 				spinner.stop(pc.green(`Published ${displayName}`));
-				allResults.push({ name: displayName, success: true });
+				results.set(target, { name: displayName, success: true });
 			} catch (err) {
 				spinner.stop(pc.red(`Failed to publish ${displayName}`));
 				p.log.message(pc.dim(errorText(err)));
-				allResults.push({ name: displayName, success: false });
+				results.set(target, { name: displayName, success: false });
 				failed.push(target);
 			}
 		}
 
 		if (failed.length === 0) break;
 
-		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(targetDisplayName(t))).join(", ")}`);
+		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(displayNames.get(t)!)).join(", ")}`);
 
 		const action = await p.select({
 			message: "How would you like to proceed?",
@@ -205,8 +210,9 @@ async function publishMultipleTargets(
 		remaining = failed;
 	}
 
-	const succeeded = allResults.filter((r) => r.success);
-	const failedResults = allResults.filter((r) => !r.success);
+	const finalResults = Array.from(results.values());
+	const succeeded = finalResults.filter((r) => r.success);
+	const failedResults = finalResults.filter((r) => !r.success);
 	if (succeeded.length) {
 		p.log.success(`Published: ${succeeded.map((r) => pc.green(r.name)).join(", ")}`);
 	}
