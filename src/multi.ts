@@ -61,11 +61,11 @@ type PublishFn = (
 	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
 ) => Promise<boolean>;
 
-type PromptOtpFn = () => Promise<string | undefined>;
+type PromptOtpFn = (dirName: string) => Promise<string | undefined>;
 
-async function defaultPromptOtp(): Promise<string | undefined> {
+async function defaultPromptOtp(dirName: string): Promise<string | undefined> {
 	const otpInput = await p.text({
-		message: "npm OTP",
+		message: `npm OTP for ${dirName}`,
 		placeholder: "123456",
 		validate: (v) => {
 			if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
@@ -90,7 +90,7 @@ export async function batchPublishNpm(
 
 		let otp: string | undefined;
 		if (authMethod === "otp") {
-			otp = await promptOtp();
+			otp = await promptOtp(pp.dirName);
 		}
 
 		const success = await publish(pp.config, pp.isBeta, { otp, webAuth, distTag: pp.distTag });

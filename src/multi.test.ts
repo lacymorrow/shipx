@@ -62,6 +62,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 describe("batchPublishNpm — OTP per-package", () => {
 	test("otp auth collects a fresh OTP for each package, not one shared", async () => {
 		const otpValues: string[] = [];
+		const promptedFor: string[] = [];
 		const projects = [
 			{ dirName: "pkg-a", config: makeFakeConfig("pkg-a"), isBeta: false },
 			{ dirName: "pkg-b", config: makeFakeConfig("pkg-b"), isBeta: false },
@@ -69,8 +70,9 @@ describe("batchPublishNpm — OTP per-package", () => {
 		];
 
 		let otpCallCount = 0;
-		const mockPromptOtp = async () => {
+		const mockPromptOtp = async (dirName: string) => {
 			otpCallCount++;
+			promptedFor.push(dirName);
 			return `${100000 + otpCallCount}`;
 		};
 
@@ -91,6 +93,7 @@ describe("batchPublishNpm — OTP per-package", () => {
 		expect(otpCallCount).toBe(3);
 		expect(new Set(otpValues).size).toBe(3);
 		expect(otpValues).toEqual(["100001", "100002", "100003"]);
+		expect(promptedFor).toEqual(["pkg-a", "pkg-b", "pkg-c"]);
 	});
 
 	test("web auth does not prompt for OTP at all", async () => {
