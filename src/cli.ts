@@ -85,12 +85,12 @@ function rollbackRelease(
 	tag: string,
 	extraTags: string[],
 	pushedTags: string[],
-	branchPushed?: boolean,
+	opts: { preReleaseSha: string; commitWasMade: boolean; branchPushed?: boolean },
 ): void {
 	p.log.warn("Rolling back release…");
 
 	const allTags = [tag, ...extraTags];
-	const plan = planRollback(allTags, pushedTags, branchPushed);
+	const plan = planRollback(allTags, pushedTags, opts.branchPushed);
 
 	for (const t of plan.localTagsToDelete) {
 		try {
@@ -100,12 +100,50 @@ function rollbackRelease(
 		}
 	}
 
-	try {
-		exec("git", ["reset", "--soft", "HEAD~1"], { cwd: root });
-		p.log.info("Rolled back locally: removed tag(s) and undid release commit");
-	} catch {
-		p.log.error("Failed to reset commit — you may need to clean up manually");
-		return;
+	if (opts.commitWasMade) {
+		const currentSha = exec("git", ["rev-parse", "HEAD"], { cwd: root }).trim();
+		const commitSubject = exec("git", ["log", "-1", "--format=%s", "HEAD"], { cwd: root }).trim();
+		const looksLikeRelease = commitSubject.includes(tag.replace(/^v/, "")) || commitSubject.includes(tag);
+
+		if (!looksLikeRelease) {
+			p.log.error(
+				`HEAD (${currentSha.slice(0, 8)}) does not look like the release commit.\n` +
+				`  Subject: "${commitSubject}"\n` +
+				`  Expected it to reference "${tag}".\n` +
+				`  Manual cleanup required (verify before running): git reset --soft ${opts.preReleaseSha}`,
+			);
+			return;
+		}
+
+		let parentSha = "";
+		try {
+			parentSha = exec("git", ["rev-parse", "HEAD^"], { cwd: root }).trim();
+		} catch {
+			p.log.error(
+				`HEAD (${currentSha.slice(0, 8)}) has no parent commit. Refusing to reset; clean up manually.`,
+			);
+			return;
+		}
+
+		if (parentSha !== opts.preReleaseSha) {
+			p.log.error(
+				`HEAD's parent (${parentSha.slice(0, 8)}) is not the pre-release commit (${opts.preReleaseSha.slice(0, 8)}).\n` +
+				`  History was rewritten between commitAndTag and rollback (likely a pull --rebase during push).\n` +
+				`  Resetting to the captured SHA would discard upstream commits. Refusing to reset.\n` +
+				`  Manual cleanup: review with ${pc.green("git log --oneline -5")} then ${pc.green(`git reset --soft ${parentSha}`)} if appropriate.`,
+			);
+			return;
+		}
+
+		try {
+			exec("git", ["reset", "--soft", opts.preReleaseSha], { cwd: root });
+			p.log.info("Rolled back locally: removed tag(s) and undid release commit");
+		} catch {
+			p.log.error(`Failed to reset to ${opts.preReleaseSha} — you may need to clean up manually`);
+			return;
+		}
+	} else {
+		p.log.info("Rolled back locally: removed tag(s) (no release commit to undo)");
 	}
 
 	if (plan.branchPushed || plan.remoteTagsToDelete.length > 0) {
@@ -113,7 +151,7 @@ function rollbackRelease(
 		for (const t of plan.remoteTagsToDelete) {
 			p.log.message(`  ${pc.dim(`git push origin :refs/tags/${t}`)}`);
 		}
-		if (plan.branchPushed) {
+		if (plan.branchPushed && opts.commitWasMade) {
 			p.log.message(`  ${pc.dim("git push --force-with-lease origin HEAD")}`);
 		}
 	}
@@ -280,6 +318,9 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		.map((tpl) => tpl.replace(/\{tag\}/g, gitTag).replace(/\{version\}/g, newVersion))
 		.filter((t) => t !== gitTag);
 
+	const preReleaseSha = exec("git", ["rev-parse", "HEAD"], { cwd: root }).trim();
+	let commitWasMade = false;
+
 	if (config.steps.commit || config.steps.tag) {
 		if (isDryRun) {
 			const allTags = [gitTag, ...extraTags].map((t) => pc.green(t)).join(", ");
@@ -287,6 +328,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		} else {
 			const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
 			commitAndTag(config, gitTag, newVersion, filesToStage);
+			commitWasMade = config.steps.commit;
 		}
 	}
 
@@ -306,7 +348,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 						initialValue: true,
 					});
 					if (!p.isCancel(doRollback) && doRollback) {
-						rollbackRelease(root, gitTag, extraTags, err.pushedTags, err.branchPushed);
+						rollbackRelease(root, gitTag, extraTags, err.pushedTags, {
+							preReleaseSha,
+							commitWasMade,
+							branchPushed: err.branchPushed,
+						});
 						p.outro(pc.yellow("Release rolled back."));
 						return;
 					}
@@ -349,7 +395,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 					initialValue: true,
 				});
 				if (!p.isCancel(doRollback) && doRollback) {
-					rollbackRelease(root, gitTag, extraTags, pushedTags);
+					rollbackRelease(root, gitTag, extraTags, pushedTags, { preReleaseSha, commitWasMade });
 					p.outro(pc.yellow("Release rolled back."));
 					return;
 				}
