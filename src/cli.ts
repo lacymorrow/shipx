@@ -289,7 +289,27 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would push branch ${pc.cyan(branch)} and tag(s) to origin`);
 		} else {
-			pushedTags = await pushChanges(config, branch, gitTag, newVersion);
+			try {
+				pushedTags = await pushChanges(config, branch, gitTag, newVersion);
+			} catch (err) {
+				if (err instanceof PartialPushError) {
+					p.log.error(`Tag push partially failed: ${err.message}`);
+					p.log.warn(`Tags already pushed to remote: ${err.pushedTags.length ? err.pushedTags.map((t) => pc.green(t)).join(", ") : "none"}`);
+					const doRollback = await p.confirm({
+						message: "Roll back the release commit and tag(s)?",
+						initialValue: true,
+					});
+					if (!p.isCancel(doRollback) && doRollback) {
+						rollbackRelease(root, gitTag, extraTags, err.pushedTags);
+						p.outro(pc.yellow("Release rolled back."));
+						return;
+					}
+					p.log.warn("Continuing without rollback — orphan tags may exist on remote.");
+					pushedTags = err.pushedTags;
+				} else {
+					throw err;
+				}
+			}
 
 			if (extraTags.length) {
 				p.log.info(`Tags: ${[gitTag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
