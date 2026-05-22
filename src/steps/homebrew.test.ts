@@ -2,6 +2,7 @@ import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { ResolvedConfig } from "../types.ts";
 
 const execCalls: Array<{ file: string; args: string[]; opts?: Record<string, unknown> }> = [];
 let tapDefaultBranch = "master";
@@ -14,6 +15,9 @@ mock.module("../utils.ts", () => ({
 			return gitStatusOutput;
 		}
 		if (file === "curl") {
+			// Short-circuit the tarball download: throwing here lets publishHomebrew
+			// exit cleanly after the checkout/pull calls we want to assert on, without
+			// requiring a real fixture file or network access.
 			throw new Error("mock: skipping download");
 		}
 		return "";
@@ -31,8 +35,8 @@ mock.module("@clack/prompts", () => ({
 
 const { publishHomebrew } = await import("./homebrew.ts");
 
-function makeConfig(tapPath: string) {
-	return {
+function makeConfig(tapPath: string): ResolvedConfig {
+	const partial: Partial<ResolvedConfig> = {
 		homebrew: {
 			tapPath,
 			formulaFile: "Formula/test.rb",
@@ -40,7 +44,8 @@ function makeConfig(tapPath: string) {
 			commitMessage: "Update {formula} to {tag}",
 		},
 		dryRun: false,
-	} as any;
+	};
+	return partial as ResolvedConfig;
 }
 
 describe("publishHomebrew", () => {
