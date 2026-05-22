@@ -25,9 +25,10 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],
 			commitMessage: "release: {tag}", commitFlags: [], pushFlags: [],
 		},
-		github: { draft: false },
-		npm: { cwd: root, access: "public" },
-		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "" },
+		github: { draft: false, assets: [] },
+		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }] },
+		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		hooks: {},
 		...overrides,
 	};
 }

@@ -4,6 +4,46 @@ export interface BumpFileConfig {
 	replacement: (version: string) => string;
 }
 
+export interface HookContext {
+	config: ResolvedConfig;
+	/** Empty string before version selection (preBump and later have the value) */
+	version: string;
+	/** Empty string before version selection (preBump and later have the value) */
+	tag: string;
+	/** Placeholder until changelog generation (postChangelog and later have the final value) */
+	changelog: string;
+	isBeta: boolean;
+}
+
+export type HookFunction = (context: HookContext) => void | Promise<void>;
+
+export interface Hooks {
+	prePreflight?: HookFunction;
+	postPreflight?: HookFunction;
+	preCleanup?: HookFunction;
+	postCleanup?: HookFunction;
+	preTest?: HookFunction;
+	postTest?: HookFunction;
+	preBump?: HookFunction;
+	postBump?: HookFunction;
+	preChangelog?: HookFunction;
+	postChangelog?: HookFunction;
+	preCommit?: HookFunction;
+	postCommit?: HookFunction;
+	prePush?: HookFunction;
+	postPush?: HookFunction;
+	preGithubRelease?: HookFunction;
+	postGithubRelease?: HookFunction;
+	preNpm?: HookFunction;
+	postNpm?: HookFunction;
+	preHomebrew?: HookFunction;
+	postHomebrew?: HookFunction;
+}
+
+export interface NpmTarget {
+	cwd: string;
+	access: "public" | "restricted";
+}
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
@@ -71,11 +111,25 @@ export interface ShipConfig {
 		cwd?: string;
 		/** npm publish access. Default: 'public' */
 		access?: "public" | "restricted";
+		/**
+		 * Multiple npm publish targets. When set, each target is published
+		 * separately with OTP collected once and reused across all targets.
+		 * If omitted, a single target is synthesized from cwd/access.
+		 */
+		targets?: Array<{ cwd?: string; access?: "public" | "restricted" }>;
 	};
 	/** GitHub release settings */
 	github?: {
 		/** Create the release as a draft so you can review before publishing. Default: false */
 		draft?: boolean;
+		/**
+		 * Glob patterns for files to upload as release assets.
+		 * Resolved relative to the project root.
+		 * Only `*` wildcards are supported (single directory level).
+		 * `**`, `?`, brackets, and braces are not supported.
+		 * Example: ["dist/*.zip", "dist/*.tar.gz"]
+		 */
+		assets?: string[];
 	};
 	/** Homebrew tap settings */
 	homebrew?: {
@@ -87,7 +141,21 @@ export interface ShipConfig {
 		repoSlug?: string;
 		/** Commit message template. Use {tag} and {formula} placeholders */
 		commitMessage?: string;
+		/**
+		 * Per-platform release asset filenames for pre-built binary formulas.
+		 * When set, downloads each platform asset from the GitHub release and computes
+		 * per-platform SHA256 hashes instead of downloading a single source tarball.
+		 *
+		 * Keys: "darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"
+		 * Values: asset filename. Use {version} for bare version, {tag} for prefixed tag.
+		 *
+		 * The formula must use on_macos/on_linux blocks with Hardware::CPU conditionals
+		 * containing paired url + sha256 lines.
+		 */
+		binaryAssets?: Record<string, string>;
 	};
+	/** Lifecycle hooks that run before/after each pipeline step */
+	hooks?: Hooks;
 }
 
 export interface ResolvedGitConfig {
@@ -99,7 +167,7 @@ export interface ResolvedGitConfig {
 	pushFlags: string[];
 }
 
-export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
+export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks">> {
 	root: string;
 	dryRun: boolean;
 	anyBranch: boolean;
@@ -107,6 +175,11 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git">> {
 	steps: Required<NonNullable<ShipConfig["steps"]>>;
 	git: ResolvedGitConfig;
 	github: Required<NonNullable<ShipConfig["github"]>>;
-	npm: Required<NonNullable<ShipConfig["npm"]>>;
+	npm: {
+		cwd: string;
+		access: "public" | "restricted";
+		targets: NpmTarget[];
+	};
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
+	hooks: Hooks;
 }

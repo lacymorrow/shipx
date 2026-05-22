@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pre-built binary Homebrew formulas** (`homebrew.binaryAssets`). Configure per-platform release asset filenames and shipx downloads each asset, computes per-platform SHA256 hashes, and updates `on_macos`/`on_linux` + `Hardware::CPU` conditional blocks in the formula. Source-tarball mode remains the default when `binaryAssets` is not set. [LAC-2027]
+
 ### Fixed
 
 - **Batch npm publish now collects a fresh OTP per package** (`multi.ts`). Previously `--multi` prompted for one OTP and reused it for all packages; subsequent publishes received `EOTP` because TOTP codes are single-use. Each package now gets its own prompt. Web auth (passkey) is listed first and marked "recommended" for multi-package deploys since it avoids the OTP problem entirely. [LAC-2018]

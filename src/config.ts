@@ -47,17 +47,21 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	},
 	github: {
 		draft: false,
+		assets: [],
 	},
 	npm: {
 		cwd: "",
 		access: "public",
+		targets: [],
 	},
 	homebrew: {
 		tapPath: "",
 		formulaFile: "",
 		repoSlug: "",
 		commitMessage: "{formula}: update to {tag}",
+		binaryAssets: {},
 	},
+	hooks: {},
 };
 
 function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit<ResolvedConfig, "root"> {
@@ -82,8 +86,17 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 				: normalizeFlags(user.git.pushFlags),
 		},
 		github: { ...base.github, ...user.github },
-		npm: { ...base.npm, ...user.npm },
-		homebrew: { ...base.homebrew, ...user.homebrew },
+		npm: {
+			cwd: user.npm?.cwd ?? base.npm.cwd,
+			access: user.npm?.access ?? base.npm.access,
+			targets: [], // resolved in loadConfig after cwd is finalized
+		},
+		homebrew: {
+			...base.homebrew,
+			...user.homebrew,
+			binaryAssets: user.homebrew?.binaryAssets ?? base.homebrew.binaryAssets,
+		},
+		hooks: { ...base.hooks, ...user.hooks },
 	};
 }
 
@@ -125,6 +138,16 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 
 	if (!merged.npm.cwd) {
 		merged.npm.cwd = root;
+	}
+
+	const userTargets = userConfig.npm?.targets;
+	if (userTargets && userTargets.length > 0) {
+		merged.npm.targets = userTargets.map((t) => ({
+			cwd: t.cwd ? resolve(root, t.cwd) : merged.npm.cwd,
+			access: t.access ?? merged.npm.access,
+		}));
+	} else {
+		merged.npm.targets = [{ cwd: merged.npm.cwd, access: merged.npm.access }];
 	}
 
 	// Auto-detect Tauri workspace: if src-tauri/Cargo.toml exists and the user

@@ -54,9 +54,10 @@ function makeFakeConfig(name: string): ResolvedConfig {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],
 			commitMessage: "release: {tag}", commitFlags: ["--no-verify"], pushFlags: ["--no-verify"],
 		},
-		github: { draft: false },
-		npm: { cwd: `/tmp/fake/${name}`, access: "public" },
-		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "" },
+		github: { draft: false, assets: [] },
+		npm: { cwd: `/tmp/fake/${name}`, access: "public", targets: [{ cwd: `/tmp/fake/${name}`, access: "public" }] },
+		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		hooks: {},
 	};
 }
 

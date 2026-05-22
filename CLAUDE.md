@@ -26,7 +26,7 @@ There are no tests. Use `typecheck` + manual dev runs against a scratch repo.
 
 ## Architecture
 
-Single entry point `src/cli.ts` calls `loadConfig()` then invokes step modules in a fixed order. Steps are not pluggable — adding a step means editing both `cli.ts` and `types.ts` (`ShipConfig.steps`).
+Single entry point `src/cli.ts` calls `loadConfig()` then invokes step modules in a fixed order. Steps are not pluggable — adding a step means editing both `cli.ts` and `types.ts` (`ShipConfig.steps`). However, lifecycle hooks (`hooks` in config) run before/after each step, allowing custom logic without modifying the pipeline. See `src/types.ts` for the `Hooks` interface and `src/hooks.ts` for the runner.
 
 ### Config resolution (`src/config.ts`)
 
@@ -59,8 +59,8 @@ Notable behavior:
 - **`cargo.ts`** — shells `cargo set-version --workspace <v>` per workspace dir. Requires `cargo-edit` to be installed; failure prints the install hint and `process.exit(1)`.
 - **`git.ts`** — single commit for all bumped files, then tag. `extraTags` templates support `{tag}` (full, e.g. `v0.5.3`) and `{version}` (bare). Dedup'd and never duplicates the main tag. Commit/push flags default to `--no-verify`; respect any user override rather than hardcoding bypasses.
 - **`npm.ts`** — supports custom dist-tags via `--tag <name>` (e.g. next, canary, rc). On failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits. Accepts an optional `otp` parameter for batch mode (multi-project deploy passes OTP through). If publish fails, cli.ts offers to **rollback** the release commit and tag.
-- **`homebrew.ts`** — downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula, commits and pushes from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this).
-- **`github.ts`** — uses `gh release create`. Failures are logged but do not abort the pipeline.
+- **`homebrew.ts`** — two modes. **Source mode** (default): downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula. **Binary mode** (when `homebrew.binaryAssets` is configured): downloads per-platform release assets, computes per-platform SHA256 hashes, and updates `on_macos`/`on_linux` + `Hardware::CPU` conditional blocks in the formula. Both modes commit and push from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this). The binary formula updater lives in `homebrew-formula.ts` alongside the source formula updater.
+- **`github.ts`** — uses `gh release create`. When `github.assets` glob patterns are configured (only `*` wildcards, no `**`/`?`/brackets), resolves them against the project root and uploads matched files via `gh release upload --clobber`. In draft mode, assets are uploaded before opening the browser so the release is complete before the user can publish. Upload failures are logged per-file but do not abort the pipeline.
 
 ### Dry-run mode
 
