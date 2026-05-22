@@ -17,6 +17,7 @@ export function normalizeFlags(input: string | string[] | undefined): string[] {
 
 const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	packageJsonPaths: [],
+	versionSource: "",
 	bumpFiles: [],
 	cargoWorkspaces: [],
 	dryRun: false,
@@ -46,6 +47,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	},
 	github: {
 		draft: false,
+		assets: [],
 	},
 	npm: {
 		cwd: "",
@@ -57,6 +59,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		formulaFile: "",
 		repoSlug: "",
 		commitMessage: "{formula}: update to {tag}",
+		binaryAssets: {},
 	},
 	hooks: {},
 };
@@ -64,6 +67,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit<ResolvedConfig, "root"> {
 	return {
 		packageJsonPaths: user.packageJsonPaths ?? base.packageJsonPaths,
+		versionSource: user.versionSource ?? base.versionSource,
 		bumpFiles: user.bumpFiles ?? base.bumpFiles,
 		cargoWorkspaces: user.cargoWorkspaces ?? base.cargoWorkspaces,
 		dryRun: base.dryRun,
@@ -87,7 +91,11 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 			access: user.npm?.access ?? base.npm.access,
 			targets: [], // resolved in loadConfig after cwd is finalized
 		},
-		homebrew: { ...base.homebrew, ...user.homebrew },
+		homebrew: {
+			...base.homebrew,
+			...user.homebrew,
+			binaryAssets: user.homebrew?.binaryAssets ?? base.homebrew.binaryAssets,
+		},
 		hooks: { ...base.hooks, ...user.hooks },
 	};
 }

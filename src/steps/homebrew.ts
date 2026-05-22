@@ -7,14 +7,25 @@ import { join } from "node:path";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
 import { detectDefaultBranch, errorText, exec } from "../utils.ts";
-import { updateFormulaUrlAndSha } from "./homebrew-formula.ts";
+import { updateFormulaUrlAndSha, updateBinaryFormulaAssets, type BinaryAssetInfo } from "./homebrew-formula.ts";
+
+function downloadAndHash(url: string): string {
+	const tmpFile = join(tmpdir(), `shipx-asset-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	try {
+		exec("curl", ["-fsLo", tmpFile, url]);
+		const data = readFileSync(tmpFile);
+		return createHash("sha256").update(data).digest("hex");
+	} finally {
+		try { unlinkSync(tmpFile); } catch {}
+	}
+}
 
 export async function publishHomebrew(
 	config: ResolvedConfig,
 	tag: string,
 	options?: { skipConfirm?: boolean },
 ): Promise<void> {
-	const { tapPath, formulaFile, repoSlug, commitMessage } = config.homebrew;
+	const { tapPath, formulaFile, repoSlug, commitMessage, binaryAssets } = config.homebrew;
 
 	if (!tapPath || !formulaFile || !repoSlug) {
 		p.log.warn("Homebrew config incomplete (tapPath, formulaFile, repoSlug required). Skipping.");
@@ -38,8 +49,11 @@ export async function publishHomebrew(
 		}
 	}
 
+	const isBinaryMode = Object.keys(binaryAssets).length > 0;
+	const modeLabel = isBinaryMode ? "binary" : "source";
+
 	const spinner = p.spinner();
-	spinner.start("Updating Homebrew formula");
+	spinner.start(`Updating Homebrew formula (${modeLabel} mode)`);
 
 	try {
 		const dirtyCheck = exec("git", ["status", "--porcelain"], { cwd: tapPath }).trim();
@@ -53,40 +67,80 @@ export async function publishHomebrew(
 		exec("git", ["checkout", branch], { cwd: tapPath });
 		exec("git", ["pull", "--rebase", "origin", branch], { cwd: tapPath });
 
-		const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
-		const tmpFile = join(tmpdir(), `shipx-tarball-${Date.now()}.tar.gz`);
-		let sha256: string;
-		try {
-			// `-f`: fail on HTTP errors (404 for an unpushed tag, 5xx from
-			// GitHub) instead of silently writing the error body into the
-			// tarball — which would otherwise be hashed and committed.
-			exec("curl", ["-fsLo", tmpFile, tarballUrl]);
-			const tarball = readFileSync(tmpFile);
-			sha256 = createHash("sha256").update(tarball).digest("hex");
-		} catch (dlErr) {
-			spinner.stop(pc.red("Failed to download tarball"));
-			p.log.error(errorText(dlErr));
-			try { unlinkSync(tmpFile); } catch {}
-			return;
-		}
-		try { unlinkSync(tmpFile); } catch {}
-
-		if (!sha256 || sha256.length !== 64) {
-			spinner.stop(pc.red("Failed to compute SHA256"));
-			p.log.error(`Got: ${sha256}`);
-			return;
-		}
-
 		const formula = readFileSync(formulaPath, "utf-8");
 		let updatedFormula: string;
-		try {
-			updatedFormula = updateFormulaUrlAndSha(formula, tarballUrl, sha256);
-		} catch (replaceErr) {
-			spinner.stop(pc.red("Homebrew formula replacement failed"));
-			p.log.error(errorText(replaceErr));
-			p.log.info(`Update manually: ${pc.cyan(`edit ${formulaPath}`)}`);
-			return;
+
+		if (isBinaryMode) {
+			const version = tag.replace(/^v/, "");
+			const resolved: Record<string, BinaryAssetInfo> = {};
+
+			for (const [platform, filenameTemplate] of Object.entries(binaryAssets)) {
+				const filename = filenameTemplate
+					.replace(/\{version\}/g, version)
+					.replace(/\{tag\}/g, tag);
+				const assetUrl = `https://github.com/${repoSlug}/releases/download/${tag}/${filename}`;
+
+				spinner.message(`Downloading ${pc.dim(filename)}`);
+				let sha256: string;
+				try {
+					sha256 = downloadAndHash(assetUrl);
+				} catch (dlErr) {
+					spinner.stop(pc.red(`Failed to download ${filename}`));
+					p.log.error(errorText(dlErr));
+					return;
+				}
+
+				if (!sha256 || sha256.length !== 64) {
+					spinner.stop(pc.red(`Failed to compute SHA256 for ${filename}`));
+					p.log.error(`Got: ${sha256}`);
+					return;
+				}
+
+				resolved[platform] = { url: assetUrl, sha256 };
+			}
+
+			spinner.message("Updating formula");
+			try {
+				const result = updateBinaryFormulaAssets(formula, resolved);
+				updatedFormula = result.formula;
+				if (result.unmatchedPlatforms.length) {
+					p.log.warn(
+						`Formula had no matching block for: ${result.unmatchedPlatforms.map((k) => pc.yellow(k)).join(", ")}`,
+					);
+				}
+			} catch (replaceErr) {
+				spinner.stop(pc.red("Homebrew formula replacement failed"));
+				p.log.error(errorText(replaceErr));
+				p.log.info(`Update manually: ${pc.cyan(`edit ${formulaPath}`)}`);
+				return;
+			}
+		} else {
+			const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
+			let sha256: string;
+			try {
+				sha256 = downloadAndHash(tarballUrl);
+			} catch (dlErr) {
+				spinner.stop(pc.red("Failed to download tarball"));
+				p.log.error(errorText(dlErr));
+				return;
+			}
+
+			if (!sha256 || sha256.length !== 64) {
+				spinner.stop(pc.red("Failed to compute SHA256"));
+				p.log.error(`Got: ${sha256}`);
+				return;
+			}
+
+			try {
+				updatedFormula = updateFormulaUrlAndSha(formula, tarballUrl, sha256);
+			} catch (replaceErr) {
+				spinner.stop(pc.red("Homebrew formula replacement failed"));
+				p.log.error(errorText(replaceErr));
+				p.log.info(`Update manually: ${pc.cyan(`edit ${formulaPath}`)}`);
+				return;
+			}
 		}
+
 		writeFileSync(formulaPath, updatedFormula);
 
 		const formulaName = formulaFile.replace(/^Formula\//, "").replace(/\.rb$/, "");

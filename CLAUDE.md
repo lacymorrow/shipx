@@ -38,6 +38,7 @@ Lookup order, first hit wins:
 
 After merging, several fields **auto-detect** when left undefined:
 - `packageJsonPaths` defaults to `["package.json"]` if a root `package.json` exists.
+- `versionSource`: path to the package.json whose `version` field is the source of truth. In monorepos where the root package.json has no version (e.g. `private: true`), set this to the sub-package that owns the version (e.g. `"packages/opencode/package.json"`). When omitted, defaults to `packageJsonPaths[0]`.
 - `cargoWorkspaces`: if **undefined** (not `[]`) and `src-tauri/Cargo.toml` exists, sets `["src-tauri"]`. The `undefined`-vs-`[]` distinction is load-bearing — `[]` is the explicit opt-out. Don't replace that check with a `.length` check.
 - `homebrew.tapPath`: falls back to sibling `../homebrew-tap` if present.
 - `homebrew.repoSlug` and `homebrew.formulaFile`: derived from `git remote get-url origin` when tap is set but slug/formula are not.
@@ -58,8 +59,8 @@ Notable behavior:
 - **`cargo.ts`** — shells `cargo set-version --workspace <v>` per workspace dir. Requires `cargo-edit` to be installed; failure prints the install hint and `process.exit(1)`.
 - **`git.ts`** — single commit for all bumped files, then tag. `extraTags` templates support `{tag}` (full, e.g. `v0.5.3`) and `{version}` (bare). Dedup'd and never duplicates the main tag. Commit/push flags default to `--no-verify`; respect any user override rather than hardcoding bypasses.
 - **`npm.ts`** — supports custom dist-tags via `--tag <name>` (e.g. next, canary, rc). On failure, opens an interactive retry loop with OTP/login/retry/skip. OTP must be 6 digits. Accepts an optional `otp` parameter for batch mode (multi-project deploy passes OTP through). If publish fails, cli.ts offers to **rollback** the release commit and tag.
-- **`homebrew.ts`** — downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula, commits and pushes from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this).
-- **`github.ts`** — uses `gh release create`. Failures are logged but do not abort the pipeline.
+- **`homebrew.ts`** — two modes. **Source mode** (default): downloads the GitHub tarball via `curl`, computes SHA256, regex-replaces `url` and `sha256` in the formula. **Binary mode** (when `homebrew.binaryAssets` is configured): downloads per-platform release assets, computes per-platform SHA256 hashes, and updates `on_macos`/`on_linux` + `Hardware::CPU` conditional blocks in the formula. Both modes commit and push from the tap repo. Skipped automatically for beta releases (`cli.ts` gates this). The binary formula updater lives in `homebrew-formula.ts` alongside the source formula updater.
+- **`github.ts`** — uses `gh release create`. When `github.assets` glob patterns are configured (only `*` wildcards, no `**`/`?`/brackets), resolves them against the project root and uploads matched files via `gh release upload --clobber`. In draft mode, assets are uploaded before opening the browser so the release is complete before the user can publish. Upload failures are logged per-file but do not abort the pipeline.
 
 ### Dry-run mode
 

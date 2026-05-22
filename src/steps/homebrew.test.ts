@@ -42,6 +42,7 @@ function makeConfig(tapPath: string): ResolvedConfig {
 			formulaFile: "Formula/test.rb",
 			repoSlug: "test/repo",
 			commitMessage: "Update {formula} to {tag}",
+			binaryAssets: {},
 		},
 		dryRun: false,
 	};

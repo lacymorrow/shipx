@@ -394,7 +394,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (config.steps.githubRelease) {
 		await runHook("preGithubRelease", config.hooks.preGithubRelease, hookCtx());
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${config.github.draft ? " (draft)" : ""}`);
+			const draftLabel = config.github.draft ? " (draft)" : "";
+			const assetLabel = config.github.assets.length
+				? ` with assets: ${config.github.assets.map((a) => pc.cyan(a)).join(", ")}`
+				: "";
+			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${draftLabel}${assetLabel}`);
 		} else {
 			createGithubRelease(config, gitTag, changelog, isBeta);
 		}
@@ -433,7 +437,8 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (config.steps.homebrew && !isBeta) {
 		await runHook("preHomebrew", config.hooks.preHomebrew, hookCtx());
 		if (isDryRun) {
-			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula`);
+			const brewMode = Object.keys(config.homebrew.binaryAssets).length > 0 ? "binary" : "source";
+			p.log.info(`${pc.dim("[dry-run]")} Would update Homebrew formula (${brewMode} mode)`);
 		} else {
 			await publishHomebrew(config, gitTag);
 		}

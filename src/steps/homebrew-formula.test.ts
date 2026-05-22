@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { updateFormulaUrlAndSha } from "./homebrew-formula.ts";
+import { updateFormulaUrlAndSha, updateBinaryFormulaAssets } from "./homebrew-formula.ts";
 
 const SIMPLE_FORMULA = `class Shipx < Formula
   desc "Interactive release CLI"
@@ -134,5 +134,135 @@ end
 		const result = updateFormulaUrlAndSha(SIMPLE_FORMULA, trickyUrl, trickySha);
 		expect(result).toContain(`url "${trickyUrl}"`);
 		expect(result).toContain(`sha256 "${trickySha}"`);
+	});
+});
+
+const BINARY_FORMULA = `class Lash < Formula
+  desc "AI shell"
+  homepage "https://github.com/lacymorrow/lash"
+  license "MIT"
+
+  on_macos do
+    if Hardware::CPU.intel?
+      url "https://github.com/lacymorrow/lash/releases/download/v0.1.0/lashcode-darwin-x64.zip"
+      sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    end
+    if Hardware::CPU.arm?
+      url "https://github.com/lacymorrow/lash/releases/download/v0.1.0/lashcode-darwin-arm64.zip"
+      sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.intel?
+      url "https://github.com/lacymorrow/lash/releases/download/v0.1.0/lashcode-linux-x64.tar.gz"
+      sha256 "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    end
+    if Hardware::CPU.arm?
+      url "https://github.com/lacymorrow/lash/releases/download/v0.1.0/lashcode-linux-arm64.tar.gz"
+      sha256 "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    end
+  end
+end
+`;
+
+describe("updateBinaryFormulaAssets", () => {
+	test("updates all four platform url+sha pairs", () => {
+		const assets = {
+			"darwin-x64": {
+				url: "https://github.com/lacymorrow/lash/releases/download/v0.2.0/lashcode-darwin-x64.zip",
+				sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+			},
+			"darwin-arm64": {
+				url: "https://github.com/lacymorrow/lash/releases/download/v0.2.0/lashcode-darwin-arm64.zip",
+				sha256: "2222222222222222222222222222222222222222222222222222222222222222",
+			},
+			"linux-x64": {
+				url: "https://github.com/lacymorrow/lash/releases/download/v0.2.0/lashcode-linux-x64.tar.gz",
+				sha256: "3333333333333333333333333333333333333333333333333333333333333333",
+			},
+			"linux-arm64": {
+				url: "https://github.com/lacymorrow/lash/releases/download/v0.2.0/lashcode-linux-arm64.tar.gz",
+				sha256: "4444444444444444444444444444444444444444444444444444444444444444",
+			},
+		};
+
+		const { formula, updatedPlatforms, unmatchedPlatforms } = updateBinaryFormulaAssets(BINARY_FORMULA, assets);
+
+		expect(formula).toContain(assets["darwin-x64"].url);
+		expect(formula).toContain(assets["darwin-x64"].sha256);
+		expect(formula).toContain(assets["darwin-arm64"].url);
+		expect(formula).toContain(assets["darwin-arm64"].sha256);
+		expect(formula).toContain(assets["linux-x64"].url);
+		expect(formula).toContain(assets["linux-x64"].sha256);
+		expect(formula).toContain(assets["linux-arm64"].url);
+		expect(formula).toContain(assets["linux-arm64"].sha256);
+
+		expect(formula).not.toContain("v0.1.0");
+		expect(formula).not.toContain("aaaa");
+		expect(formula).not.toContain("bbbb");
+		expect(formula).not.toContain("cccc");
+		expect(formula).not.toContain("dddd");
+
+		expect(updatedPlatforms).toHaveLength(4);
+		expect(unmatchedPlatforms).toHaveLength(0);
+	});
+
+	test("updates a subset of platforms and reports unmatched", () => {
+		const assets = {
+			"darwin-arm64": {
+				url: "https://github.com/lacymorrow/lash/releases/download/v0.2.0/lashcode-darwin-arm64.zip",
+				sha256: "2222222222222222222222222222222222222222222222222222222222222222",
+			},
+		};
+
+		const { formula, updatedPlatforms, unmatchedPlatforms } = updateBinaryFormulaAssets(BINARY_FORMULA, assets);
+
+		expect(formula).toContain(assets["darwin-arm64"].url);
+		expect(formula).toContain(assets["darwin-arm64"].sha256);
+		expect(formula).toContain("lashcode-darwin-x64.zip");
+		expect(formula).toContain("aaaaaaa");
+
+		expect(updatedPlatforms).toEqual(["darwin-arm64"]);
+		expect(unmatchedPlatforms).toHaveLength(0);
+	});
+
+	test("throws when no platform blocks match", () => {
+		expect(() =>
+			updateBinaryFormulaAssets(SIMPLE_FORMULA, {
+				"darwin-arm64": {
+					url: "https://example.com/foo.zip",
+					sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+				},
+			}),
+		).toThrow(/could not find any platform-conditional/);
+	});
+
+	test("throws on unknown platform keys", () => {
+		expect(() =>
+			updateBinaryFormulaAssets(BINARY_FORMULA, {
+				"darwin-arm": {
+					url: "https://example.com/foo.zip",
+					sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+				},
+			}),
+		).toThrow(/Unknown binary asset platform/);
+	});
+
+	test("preserves formula structure outside url+sha pairs", () => {
+		const assets = {
+			"darwin-x64": {
+				url: "https://example.com/new.zip",
+				sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+			},
+		};
+
+		const { formula } = updateBinaryFormulaAssets(BINARY_FORMULA, assets);
+
+		expect(formula).toContain('desc "AI shell"');
+		expect(formula).toContain("on_macos do");
+		expect(formula).toContain("on_linux do");
+		expect(formula).toContain("Hardware::CPU.intel?");
+		expect(formula).toContain("Hardware::CPU.arm?");
 	});
 });

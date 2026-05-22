@@ -44,11 +44,16 @@ export interface NpmTarget {
 	cwd: string;
 	access: "public" | "restricted";
 }
-
-
 export interface ShipConfig {
 	/** Paths to package.json files to version-bump (relative to project root) */
 	packageJsonPaths?: string[];
+	/**
+	 * Path to the package.json whose `version` field is the source of truth
+	 * for the current version (relative to project root).
+	 * Useful in monorepos where the root package.json has no version.
+	 * When omitted, defaults to `packageJsonPaths[0]`.
+	 */
+	versionSource?: string;
 	/** Additional files with regex-based version bumping */
 	bumpFiles?: BumpFileConfig[];
 	/**
@@ -117,6 +122,14 @@ export interface ShipConfig {
 	github?: {
 		/** Create the release as a draft so you can review before publishing. Default: false */
 		draft?: boolean;
+		/**
+		 * Glob patterns for files to upload as release assets.
+		 * Resolved relative to the project root.
+		 * Only `*` wildcards are supported (single directory level).
+		 * `**`, `?`, brackets, and braces are not supported.
+		 * Example: ["dist/*.zip", "dist/*.tar.gz"]
+		 */
+		assets?: string[];
 	};
 	/** Homebrew tap settings */
 	homebrew?: {
@@ -128,6 +141,18 @@ export interface ShipConfig {
 		repoSlug?: string;
 		/** Commit message template. Use {tag} and {formula} placeholders */
 		commitMessage?: string;
+		/**
+		 * Per-platform release asset filenames for pre-built binary formulas.
+		 * When set, downloads each platform asset from the GitHub release and computes
+		 * per-platform SHA256 hashes instead of downloading a single source tarball.
+		 *
+		 * Keys: "darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"
+		 * Values: asset filename. Use {version} for bare version, {tag} for prefixed tag.
+		 *
+		 * The formula must use on_macos/on_linux blocks with Hardware::CPU conditionals
+		 * containing paired url + sha256 lines.
+		 */
+		binaryAssets?: Record<string, string>;
 	};
 	/** Lifecycle hooks that run before/after each pipeline step */
 	hooks?: Hooks;
