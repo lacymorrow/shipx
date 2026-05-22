@@ -110,7 +110,27 @@ function rollbackRelease(
 				`HEAD (${currentSha.slice(0, 8)}) does not look like the release commit.\n` +
 				`  Subject: "${commitSubject}"\n` +
 				`  Expected it to reference "${tag}".\n` +
-				`  Manual cleanup required: git reset --soft ${opts.preReleaseSha}`,
+				`  Manual cleanup required (verify before running): git reset --soft ${opts.preReleaseSha}`,
+			);
+			return;
+		}
+
+		let parentSha = "";
+		try {
+			parentSha = exec("git", ["rev-parse", "HEAD^"], { cwd: root }).trim();
+		} catch {
+			p.log.error(
+				`HEAD (${currentSha.slice(0, 8)}) has no parent commit. Refusing to reset; clean up manually.`,
+			);
+			return;
+		}
+
+		if (parentSha !== opts.preReleaseSha) {
+			p.log.error(
+				`HEAD's parent (${parentSha.slice(0, 8)}) is not the pre-release commit (${opts.preReleaseSha.slice(0, 8)}).\n` +
+				`  History was rewritten between commitAndTag and rollback (likely a pull --rebase during push).\n` +
+				`  Resetting to the captured SHA would discard upstream commits. Refusing to reset.\n` +
+				`  Manual cleanup: review with ${pc.green("git log --oneline -5")} then ${pc.green(`git reset --soft ${parentSha}`)} if appropriate.`,
 			);
 			return;
 		}
