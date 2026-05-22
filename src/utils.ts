@@ -118,3 +118,11 @@ export function errorText(err: unknown): string {
 	}
 	return String(err);
 }
+
+export function parseFlag(argv: string[], flag: string): string | undefined {
+	const idx = argv.indexOf(flag);
+	if (idx === -1 || idx === argv.length - 1) return undefined;
+	const next = argv[idx + 1];
+	if (next.startsWith("--")) return undefined;
+	return next;
+}

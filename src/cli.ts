@@ -17,7 +17,7 @@ import { runPreflight } from "./steps/preflight.ts";
 import { runTests } from "./steps/test.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
-import { exec, isGitRepo, readJson, setupCleanExit } from "./utils.ts";
+import { exec, isGitRepo, parseFlag, readJson, setupCleanExit } from "./utils.ts";
 
 export type { ShipConfig, BumpFileConfig } from "./types.ts";
 
@@ -54,8 +54,8 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--dry-run")}          Preview all steps without executing
   ${pc.yellow("--tag <name>")}       Publish with a custom dist-tag (e.g. next, canary, rc)
   ${pc.yellow("--any-branch")}       Allow releasing from any branch, not just the release branch
-  ${pc.yellow("--no-tests")}         Skip the test step
-  ${pc.yellow("--no-cleanup")}       Skip the cleanup (reinstall) step
+  ${pc.yellow("--no-tests")}         Disable tests (overrides config steps.test=true)
+  ${pc.yellow("--no-cleanup")}       Disable cleanup (overrides config steps.cleanup=true)
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
   ${pc.yellow("--help, -h")}         Show this help message
   ${pc.yellow("--version, -v")}      Print version
@@ -72,12 +72,6 @@ ${pc.bold("CONFIG")}
 
 ${pc.dim("https://github.com/lacymorrow/shipx")}
 `);
-}
-
-function parseFlag(argv: string[], flag: string): string | undefined {
-	const idx = argv.indexOf(flag);
-	if (idx === -1 || idx === argv.length - 1) return undefined;
-	return argv[idx + 1];
 }
 
 function rollbackRelease(
