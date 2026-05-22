@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Batch npm publish now collects a fresh OTP per package** (`multi.ts`). Previously `--multi` prompted for one OTP and reused it for all packages; subsequent publishes received `EOTP` because TOTP codes are single-use. Each package now gets its own prompt. Web auth (passkey) is listed first and marked "recommended" for multi-package deploys since it avoids the OTP problem entirely. [LAC-2018]
+
 ### Fixed (LAC-2021)
 
 - **npm registry lookup distinguishes 404 vs network error** (`registry.ts`). Previously, both produced a silent `null` and shipx would bump from a stale local version even if the registry was unreachable; now network failures surface a loud warning that the publish may collide.
@@ -36,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Archived repo detection**: preflight (single mode) and discovery (multi mode) now check whether the GitHub remote is archived via `gh repo view --json isArchived`. Archived repos abort with a clear error before any local changes; in `--multi` they are filtered out of the selection list with a warning. [LAC-1949]
 - **Pull-and-retry on push rejection**: when `git push` fails because the remote is ahead, shipx now offers to `git pull --rebase` and retry instead of aborting.
-- **Multi-project deploy** (`--multi`): scan a parent directory for projects, detect unreleased changes, select which to release, batch npm publishes with a single OTP to avoid timeout issues.
+- **Multi-project deploy** (`--multi`): scan a parent directory for projects, detect unreleased changes, select which to release, batch npm publishes with per-package OTP prompts (or web auth) to avoid TOTP reuse failures.
 - Logo, social preview banner, and `media/demo.tape` for reproducible terminal demos via [VHS](https://github.com/charmbracelet/vhs).
 - Issue & pull request templates, FUNDING and dependabot config, SECURITY and CONTRIBUTING docs.
 - CI workflow: typecheck and build on Node 18 / 20 / 22.

@@ -17,6 +17,88 @@ import type { ResolvedConfig } from "./types.ts";
 
 setupCleanExit();
 
+export interface NpmAuthOption {
+	value: "web" | "otp" | "none";
+	label: string;
+	hint: string;
+}
+
+export function buildNpmAuthOptions(packageCount: number): NpmAuthOption[] {
+	const isMulti = packageCount > 1;
+	return [
+		{
+			value: "web",
+			label: "Web auth (passkey)",
+			hint: isMulti
+				? "recommended — authenticates each publish in browser"
+				: "authenticate in browser",
+		},
+		{
+			value: "otp",
+			label: "Enter OTP code",
+			hint: isMulti
+				? "will prompt for a fresh code per package (OTPs are single-use)"
+				: "publish with one-time password",
+		},
+		{
+			value: "none",
+			label: "No auth needed",
+			hint: "token already configured",
+		},
+	];
+}
+
+interface BatchProject {
+	dirName: string;
+	config: ResolvedConfig;
+	isBeta: boolean;
+	distTag?: string;
+}
+
+type PublishFn = (
+	config: ResolvedConfig,
+	isBeta: boolean,
+	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
+) => Promise<boolean>;
+
+type PromptOtpFn = (dirName: string) => Promise<string | undefined>;
+
+async function defaultPromptOtp(dirName: string): Promise<string | undefined> {
+	const otpInput = await p.text({
+		message: `npm OTP for ${dirName}`,
+		placeholder: "123456",
+		validate: (v) => {
+			if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
+		},
+	});
+	if (p.isCancel(otpInput)) return undefined;
+	return otpInput.trim();
+}
+
+export async function batchPublishNpm(
+	projects: BatchProject[],
+	authMethod: "web" | "otp" | "none",
+	overrides?: { publishFn?: PublishFn; promptOtpFn?: PromptOtpFn },
+): Promise<{ name: string; success: boolean }[]> {
+	const publish = overrides?.publishFn ?? publishNpm;
+	const promptOtp = overrides?.promptOtpFn ?? defaultPromptOtp;
+	const webAuth = authMethod === "web";
+	const results: { name: string; success: boolean }[] = [];
+
+	for (const pp of projects) {
+		p.log.message(`  ${pc.cyan("→")} ${pp.dirName}`);
+
+		let otp: string | undefined;
+		if (authMethod === "otp") {
+			otp = await promptOtp(pp.dirName);
+		}
+
+		const success = await publish(pp.config, pp.isBeta, { otp, webAuth, distTag: pp.distTag });
+		results.push({ name: pp.dirName, success });
+	}
+
+	return results;
+}
 interface PreparedProject {
 	project: DiscoveredProject;
 	config: ResolvedConfig;
@@ -326,47 +408,20 @@ export async function multiMain(argv: string[]): Promise<void> {
 		} else {
 			p.log.step(pc.bold(`Phase 2: npm publish (${npmProjects.length} package${npmProjects.length === 1 ? "" : "s"})`));
 
+			const authOptions = buildNpmAuthOptions(npmProjects.length);
 			const authMethod = await p.select({
 				message: "npm authentication method",
-				options: [
-					{ value: "web" as const, label: "Web auth (passkey)", hint: "authenticate in browser" },
-					{ value: "otp" as const, label: "Enter OTP code", hint: "reuse one OTP for all packages" },
-					{ value: "none" as const, label: "No auth needed", hint: "token already configured" },
-				],
+				options: authOptions,
 			});
 
 			if (!p.isCancel(authMethod)) {
-				let otp: string | undefined;
-				const webAuth = authMethod === "web";
-
-				if (authMethod === "otp") {
-					if (npmProjects.length > 1) {
-						p.log.info(
-							`Publishing ${pc.cyan(String(npmProjects.length))} packages. ` +
-							`Enter your OTP once — it'll be reused for all publishes.`,
-						);
-					}
-					const otpInput = await p.text({
-						message: "npm OTP (will be used for all packages)",
-						placeholder: "123456",
-						validate: (v) => {
-							if (!v || !/^\d{6}$/.test(v.trim())) return "OTP must be 6 digits";
-						},
-					});
-					if (!p.isCancel(otpInput)) {
-						otp = otpInput.trim();
-					}
-				}
-
-				const results: { name: string; success: boolean }[] = [];
-
-				for (const pp of npmProjects) {
-					p.log.message(`  ${pc.cyan("→")} ${pp.project.dirName}`);
-					const distTag = pp.config.tag || undefined;
-					const success = await publishNpm(pp.config, pp.isBeta, { otp, webAuth, distTag });
-					if (!success && otp) otp = undefined;
-					results.push({ name: pp.project.dirName, success });
-				}
+				const batchProjects = npmProjects.map((pp) => ({
+					dirName: pp.project.dirName,
+					config: pp.config,
+					isBeta: pp.isBeta,
+					distTag: pp.config.tag || undefined,
+				}));
+				const results = await batchPublishNpm(batchProjects, authMethod);
 
 				const succeeded = results.filter((r) => r.success);
 				const failed = results.filter((r) => !r.success);
