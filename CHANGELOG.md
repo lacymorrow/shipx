@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`.shipxignore` no longer clobbered by `--multi`**: previously, every multi-project run rewrote `.shipxignore` to include every project not currently selected, silently adding the entire repo dir tree on the first default-accept. Now only the explicit user delta is persisted (pre-selected projects that were deselected are added; previously-ignored projects that were selected are removed), and the file is only rewritten when the set actually changes. [LAC-2017]
 - **Pull-rebase with dirty trees**: when push rejection triggers `git pull --rebase` and the working tree still has unstaged changes (e.g. preflight warned but the user continued), shipx now stashes the dirty files (including untracked) before pulling and restores them afterward, instead of failing with `cannot pull with rebase: You have unstaged changes`. [LAC-1950]
 
 ### Added

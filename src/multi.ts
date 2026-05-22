@@ -1,9 +1,8 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
+import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
@@ -17,23 +16,6 @@ import { branchExists, errorText, exec, setupCleanExit } from "./utils.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 setupCleanExit();
-
-function loadIgnored(root: string): Set<string> {
-	const ignorePath = resolve(root, ".shipxignore");
-	if (!existsSync(ignorePath)) return new Set();
-	return new Set(
-		readFileSync(ignorePath, "utf-8")
-			.split("\n")
-			.map((line) => line.trim())
-			.filter((line) => line && !line.startsWith("#")),
-	);
-}
-
-function saveIgnored(root: string, ignored: Set<string>): void {
-	const ignorePath = resolve(root, ".shipxignore");
-	const content = [...ignored].sort().join("\n") + "\n";
-	writeFileSync(ignorePath, content);
-}
 
 interface PreparedProject {
 	project: DiscoveredProject;
@@ -139,15 +121,27 @@ export async function multiMain(argv: string[]): Promise<void> {
 	}
 
 	const selectedPaths = selected as string[];
-
-	const newIgnored = new Set<string>();
-	for (const proj of projects) {
-		if (!selectedPaths.includes(proj.path)) {
-			newIgnored.add(proj.dirName);
-		}
-	}
-	saveIgnored(root, newIgnored);
 	const selectedProjects = projects.filter((proj) => selectedPaths.includes(proj.path));
+
+	// LAC-2017: only persist the user's explicit delta to .shipxignore. The
+	// previous logic rewrote ignored = "every project not currently selected",
+	// which silently dumped every clean/no-change repo in the parent directory
+	// into .shipxignore on each default-accept run.
+	const preSelectedDirNames = new Set(
+		projects.filter((proj) => preSelected.includes(proj.path)).map((proj) => proj.dirName),
+	);
+	const selectedDirNames = new Set(selectedProjects.map((proj) => proj.dirName));
+	const nextIgnored = computeIgnoredAfterSelection({
+		previousIgnored: ignored,
+		preSelectedDirNames,
+		selectedDirNames,
+	});
+	const ignoredChanged =
+		nextIgnored.size !== ignored.size ||
+		[...nextIgnored].some((name) => !ignored.has(name));
+	if (ignoredChanged) {
+		saveIgnored(root, nextIgnored);
+	}
 
 	const dirtySelected = selectedProjects.filter((proj) => proj.dirty);
 	if (dirtySelected.length) {
