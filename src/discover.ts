@@ -129,6 +129,7 @@ interface PkgCandidate {
 	name: string;
 	version: string;
 	isPrivate: boolean;
+	isWorkspaceRoot: boolean;
 }
 
 export async function discoverProjects(
@@ -174,6 +175,7 @@ export async function discoverProjects(
 			name: typeof pkg.name === "string" ? pkg.name : dirName,
 			version: typeof pkg.version === "string" ? pkg.version : "0.0.0",
 			isPrivate: pkg.private === true,
+			isWorkspaceRoot: Boolean(pkg.workspaces),
 		});
 	}
 
@@ -195,7 +197,7 @@ export async function discoverProjects(
 			path: c.fullPath,
 			version: c.version,
 			private: c.isPrivate,
-			hasNpm: !c.isPrivate,
+			hasNpm: !c.isPrivate && !c.isWorkspaceRoot,
 			changeCount: g.changeCount,
 			lastTag: g.lastTag,
 			branch: g.branch,
