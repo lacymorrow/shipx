@@ -79,7 +79,7 @@ The flow runs in three phases:
 2. **npm publish** — batched: collects OTP once and passes it to all publishes back-to-back, solving the OTP-timeout problem.
 3. **Homebrew** — updates formulas for non-beta releases.
 
-`discoverProjects()` returns `DiscoveredProject[]` sorted alphabetically by `dirName`. Projects with `private: true` in their `package.json` are flagged as non-npm-publishable.
+`discoverProjects()` returns `DiscoveredProject[]` sorted by change count (most changes first). Projects with `private: true` in their `package.json` are flagged as non-npm-publishable.
 
 ### What "release branch" means
 

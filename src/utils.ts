@@ -1,4 +1,4 @@
-import { execFile, execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
 export function exec(
@@ -65,7 +65,7 @@ export function branchExists(dir: string, branch: string): boolean {
 export function getGithubSlug(dir: string): string | null {
 	try {
 		const remote = exec("git", ["remote", "get-url", "origin"], { cwd: dir }).trim();
-		const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
+		const match = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
 		if (match) return `${match[1]}/${match[2]}`;
 		return null;
 	} catch {
@@ -88,47 +88,6 @@ export function isRepoArchived(dir: string): boolean | null {
 	} catch {
 		return null;
 	}
-}
-
-export function checkArchivedBatch(
-	dirs: string[],
-): Promise<Map<string, boolean>> {
-	const slugsByDir = new Map<string, string>();
-	for (const dir of dirs) {
-		const slug = getGithubSlug(dir);
-		if (slug) slugsByDir.set(dir, slug);
-	}
-
-	if (slugsByDir.size === 0) return Promise.resolve(new Map());
-
-	const entries = [...slugsByDir.entries()];
-	const aliases: string[] = [];
-	for (let i = 0; i < entries.length; i++) {
-		const [, slug] = entries[i];
-		const [owner, name] = slug.split("/");
-		aliases.push(`r${i}: repository(owner: "${owner}", name: "${name}") { isArchived }`);
-	}
-
-	const query = `query { ${aliases.join(" ")} }`;
-
-	return new Promise((resolve) => {
-		execFile("gh", ["api", "graphql", "-f", `query=${query}`], (err, stdout) => {
-			const result = new Map<string, boolean>();
-			const raw = stdout || (err as { stdout?: string } | null)?.stdout || "";
-			if (!raw) { resolve(result); return; }
-			try {
-				const parsed = JSON.parse(raw) as { data?: Record<string, { isArchived?: boolean } | null> };
-				if (!parsed.data) { resolve(result); return; }
-				for (let i = 0; i < entries.length; i++) {
-					const repo = parsed.data[`r${i}`];
-					if (repo) result.set(entries[i][0], repo.isArchived === true);
-				}
-			} catch {
-				// parse failed
-			}
-			resolve(result);
-		});
-	});
 }
 
 export function isGitRepo(dir: string): boolean {
