@@ -49,7 +49,7 @@ function collectGitMeta(dir: string): Promise<GitMeta> {
 			const lines = stdout.split("\n");
 			const remoteUrl = (lines[4] ?? "").trim();
 			let slug: string | null = null;
-			const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+			const match = remoteUrl.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
 			if (match) slug = `${match[1]}/${match[2]}`;
 
 			res({
@@ -82,23 +82,29 @@ function checkArchivedBatch(slugsByIndex: Map<number, string>): Map<number, bool
 	if (slugsByIndex.size === 0) return results;
 
 	const slugs = [...slugsByIndex.values()];
+	let raw = "";
 	try {
-		const output = execFileSync(
+		raw = execFileSync(
 			"gh",
 			["api", "graphql", "-f", `query=${buildArchivedQuery(slugs)}`],
 			{ encoding: "utf-8", stdio: "pipe", timeout: 15_000 },
 		);
-		const data = JSON.parse(output) as { data?: Record<string, { isArchived?: boolean } | null> };
+	} catch (err) {
+		raw = (err as { stdout?: string } | null)?.stdout ?? "";
+	}
+	try {
+		if (!raw) return results;
+		const data = JSON.parse(raw) as { data?: Record<string, { isArchived?: boolean } | null> };
 		if (!data.data) return results;
 
 		let i = 0;
 		for (const [idx] of slugsByIndex) {
 			const node = data.data[`r${i}`];
-			results.set(idx, node?.isArchived === true);
+			if (node) results.set(idx, node.isArchived === true);
 			i++;
 		}
 	} catch {
-		// gh CLI missing, not authed, or rate-limited — treat all as non-archived
+		// parse failed
 	}
 	return results;
 }

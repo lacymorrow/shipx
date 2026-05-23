@@ -65,7 +65,7 @@ export function branchExists(dir: string, branch: string): boolean {
 export function getGithubSlug(dir: string): string | null {
 	try {
 		const remote = exec("git", ["remote", "get-url", "origin"], { cwd: dir }).trim();
-		const match = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+		const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
 		if (match) return `${match[1]}/${match[2]}`;
 		return null;
 	} catch {
