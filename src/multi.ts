@@ -361,13 +361,17 @@ export async function multiMain(argv: string[]): Promise<void> {
 		// points npm.cwd at a subdirectory, that sub-package determines hasNpm.
 		if (config.steps.npm) {
 			const hasCustomTarget = config.npm.targets.some(
-				(t) => resolve(t.cwd) !== resolve(project.path),
+				(t) => t.cwd !== project.path,
 			);
 			if (hasCustomTarget) {
 				project.hasNpm = config.npm.targets.some((t) => {
 					try {
 						const pkg = readJson(resolve(t.cwd, "package.json"));
-						return pkg.private !== true;
+						const isPublishable = pkg.private !== true && !pkg.workspaces;
+						if (isPublishable && typeof pkg.name === "string") {
+							project.name = pkg.name;
+						}
+						return isPublishable;
 					} catch {
 						return false;
 					}
