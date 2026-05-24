@@ -179,6 +179,12 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks
 		cwd: string;
 		access: "public" | "restricted";
 		targets: NpmTarget[];
+		/**
+		 * Human-readable reason describing how `cwd` was chosen by auto-detection.
+		 * Empty string when the user explicitly configured `npm.cwd` / `npm.targets`,
+		 * or when no auto-detection fired.
+		 */
+		autoDetectedReason: string;
 	};
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
 	hooks: Hooks;

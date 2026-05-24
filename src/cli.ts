@@ -248,6 +248,10 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		p.log.info(pc.dim("Dry-run mode — no changes will be made"));
 	}
 
+	if (config.npm.autoDetectedReason) {
+		p.log.info(config.npm.autoDetectedReason);
+	}
+
 	const hookCtx = () => ({ config, version: newVersion, tag: gitTag, changelog, isBeta });
 	let newVersion = "";
 	let gitTag = "";

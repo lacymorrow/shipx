@@ -26,7 +26,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 			commitMessage: "release: {tag}", commitFlags: [], pushFlags: [],
 		},
 		github: { draft: false, assets: [] },
-		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }] },
+		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
 		hooks: {},
 		...overrides,

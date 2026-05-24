@@ -76,6 +76,64 @@ function targetDisplayName(target: NpmTarget): string {
 	return target.cwd;
 }
 
+/**
+ * After a successful `npm publish`, ask the registry what it actually has
+ * for `<name>@<version>` and warn if the published artifact is missing
+ * entry points that exist locally — the lacy-style "no bin field on npm"
+ * disaster (LAC-2055). Best-effort: warns but never fails the release,
+ * since the registry can lag and offline environments shouldn't break.
+ */
+export function verifyPublishedArtifact(cwd: string): void {
+	let localPkg: Record<string, unknown>;
+	try {
+		localPkg = readJson(resolve(cwd, "package.json"));
+	} catch {
+		return;
+	}
+	if (typeof localPkg.name !== "string" || typeof localPkg.version !== "string") return;
+	const name = localPkg.name;
+	const version = localPkg.version;
+
+	let raw: string;
+	try {
+		raw = exec("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
+	} catch {
+		// Registry lag / network / package not found — don't fail the release.
+		p.log.warn(
+			`Could not verify ${pc.cyan(`${name}@${version}`)} on the registry (npm view failed).\n` +
+			`  Manually verify with ${pc.green(`npm view ${name}@${version}`)} once propagation completes.`,
+		);
+		return;
+	}
+
+	let view: Record<string, unknown>;
+	try {
+		view = JSON.parse(raw.trim() || "{}");
+	} catch {
+		return;
+	}
+
+	const mismatches: string[] = [];
+
+	const hasLocalBin = Boolean(localPkg.bin);
+	const hasRegistryBin = Boolean(view.bin);
+	if (hasLocalBin && !hasRegistryBin) {
+		mismatches.push(`local has "bin" but registry version has none`);
+	}
+
+	if (typeof localPkg.main === "string" && typeof view.main !== "string") {
+		mismatches.push(`local has "main": "${localPkg.main}" but registry version has none`);
+	}
+
+	if (mismatches.length) {
+		p.log.warn(
+			`Published ${pc.cyan(`${name}@${version}`)} doesn't match the local package:\n` +
+			mismatches.map((m) => `  ${pc.yellow("●")} ${m}`).join("\n") + "\n" +
+			`  This usually means a different package.json was published than expected — verify the package on npm before relying on it.`,
+		);
+	}
+}
+
 async function publishMultipleTargets(
 	targets: NpmTarget[],
 	isBeta: boolean,
@@ -150,6 +208,7 @@ async function publishMultipleTargets(
 				if (tryWebPublish(args, target.cwd)) {
 					p.log.success(`  Published ${pc.green(displayName)}`);
 					results.set(target, { name: displayName, success: true });
+					verifyPublishedArtifact(target.cwd);
 				} else {
 					p.log.error(`  Failed to publish ${displayName}`);
 					results.set(target, { name: displayName, success: false });
@@ -167,6 +226,7 @@ async function publishMultipleTargets(
 				exec("npm", attemptArgs, { cwd: target.cwd });
 				spinner.stop(pc.green(`Published ${displayName}`));
 				results.set(target, { name: displayName, success: true });
+				verifyPublishedArtifact(target.cwd);
 			} catch (err) {
 				spinner.stop(pc.red(`Failed to publish ${displayName}`));
 				p.log.message(pc.dim(errorText(err)));
@@ -251,6 +311,7 @@ export async function publishNpm(
 		p.log.info("Publishing to npm with browser authentication…");
 		if (tryWebPublish(baseArgs, cwd)) {
 			p.log.success(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
+			verifyPublishedArtifact(cwd);
 			return true;
 		}
 		p.log.error("npm publish with web auth failed");
@@ -264,6 +325,7 @@ export async function publishNpm(
 		try {
 			exec("npm", attemptArgs, { cwd });
 			spinner.stop(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
+			verifyPublishedArtifact(cwd);
 			return true;
 		} catch (err) {
 			spinner.stop(pc.yellow("npm publish failed"));
@@ -309,6 +371,7 @@ export async function publishNpm(
 			p.log.info("Opening browser for authentication…");
 			if (tryWebPublish(baseArgs, cwd)) {
 				p.log.success(pc.green("Published to npm"));
+				verifyPublishedArtifact(cwd);
 				return true;
 			}
 			p.log.error("npm publish with web auth failed");
@@ -333,6 +396,7 @@ export async function publishNpm(
 		try {
 			exec("npm", retryArgs, { cwd });
 			retrySpinner.stop(pc.green("Published to npm"));
+			verifyPublishedArtifact(cwd);
 			return true;
 		} catch (err) {
 			retrySpinner.stop(pc.red("npm publish failed"));

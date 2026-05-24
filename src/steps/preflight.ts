@@ -2,8 +2,20 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { isUnpublishablePackage } from "../detect.ts";
 import type { ResolvedConfig } from "../types.ts";
 import { exec, isRepoArchived, readJson } from "../utils.ts";
+
+/**
+ * Path to the package.json that will actually be published — read from
+ * `npm.cwd`, which is the directory `npm publish` runs in. This may differ
+ * from `packageJsonPaths[0]` (which is the version-bump source); using the
+ * wrong one means preflight validates a different package than the one
+ * heading to the registry.
+ */
+function publishPkgPath(config: ResolvedConfig): string {
+	return resolve(config.npm.cwd, "package.json");
+}
 
 function checkCleanTree(config: ResolvedConfig): void {
 	let status: string;
@@ -127,7 +139,7 @@ export function resolveNpmRegistry(
 function checkNpmAuth(config: ResolvedConfig): void {
 	if (!config.steps.npm) return;
 
-	const pkgPath = resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
+	const pkgPath = publishPkgPath(config);
 	let registry: string | undefined;
 	if (existsSync(pkgPath)) {
 		registry = resolveNpmRegistry(readJson(pkgPath), config.npm.cwd);
@@ -152,23 +164,23 @@ function checkNpmAuth(config: ResolvedConfig): void {
 function checkPackageEntryPoints(config: ResolvedConfig): void {
 	if (!config.steps.npm) return;
 
-	const pkgPath = resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
+	const pkgPath = publishPkgPath(config);
 	if (!existsSync(pkgPath)) return;
 
 	const pkg = readJson(pkgPath);
 	const missing: string[] = [];
 
 	if (typeof pkg.main === "string") {
-		const mainPath = resolve(config.root, pkg.main);
+		const mainPath = resolve(config.npm.cwd, pkg.main);
 		if (!existsSync(mainPath)) missing.push(`main: ${pkg.main}`);
 	}
 
 	if (typeof pkg.bin === "string") {
-		const binPath = resolve(config.root, pkg.bin);
+		const binPath = resolve(config.npm.cwd, pkg.bin);
 		if (!existsSync(binPath)) missing.push(`bin: ${pkg.bin}`);
 	} else if (pkg.bin && typeof pkg.bin === "object") {
 		for (const [name, binFile] of Object.entries(pkg.bin as Record<string, string>)) {
-			const binPath = resolve(config.root, binFile);
+			const binPath = resolve(config.npm.cwd, binFile);
 			if (!existsSync(binPath)) missing.push(`bin.${name}: ${binFile}`);
 		}
 	}
@@ -184,12 +196,12 @@ function checkPackageEntryPoints(config: ResolvedConfig): void {
 function checkPackageFiles(config: ResolvedConfig): void {
 	if (!config.steps.npm) return;
 
-	const pkgPath = resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
+	const pkgPath = publishPkgPath(config);
 	if (!existsSync(pkgPath)) return;
 
 	const pkg = readJson(pkgPath);
 	const hasFiles = Array.isArray(pkg.files);
-	const hasNpmIgnore = existsSync(resolve(config.root, ".npmignore"));
+	const hasNpmIgnore = existsSync(resolve(config.npm.cwd, ".npmignore"));
 
 	if (!hasFiles && !hasNpmIgnore) {
 		p.log.warn(
@@ -197,6 +209,39 @@ function checkPackageFiles(config: ResolvedConfig): void {
 			`  Everything will be published — this may include tests, docs, and other non-essential files.\n` +
 			`  Add a ${pc.green('"files"')} array to package.json to control what gets published.`,
 		);
+	}
+}
+
+/**
+ * Refuses to proceed when the package about to be published is structurally
+ * unpublishable (private, workspace root, or missing entry points).
+ *
+ * This is the main backstop against the lacy-style disaster where shipx
+ * silently shipped a root package with no `bin` field. Detection is the
+ * preferred fix; this is the loud-failure guard for cases where detection
+ * didn't fire or was overridden.
+ */
+function checkPackagePublishable(config: ResolvedConfig): void {
+	if (!config.steps.npm) return;
+
+	for (const target of config.npm.targets) {
+		const pkgPath = resolve(target.cwd, "package.json");
+		if (!existsSync(pkgPath)) {
+			p.log.error(
+				`npm target ${pc.cyan(target.cwd)} has no package.json — refusing to publish.`,
+			);
+			process.exit(1);
+		}
+		const pkg = readJson(pkgPath);
+		const reason = isUnpublishablePackage(pkg);
+		if (reason) {
+			p.log.error(
+				`Package at ${pc.cyan(target.cwd)} is not publishable: ${reason}.\n` +
+				`  Either configure ${pc.green("npm.cwd")} / ${pc.green("npm.targets")} to point at the right subpackage,\n` +
+				`  or disable npm publish with ${pc.green("steps.npm: false")} in your shipx config.`,
+			);
+			process.exit(1);
+		}
 	}
 }
 
@@ -228,6 +273,7 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 
 	spinner.stop("Preflight OK");
 
+	checkPackagePublishable(config);
 	checkNpmAuth(config);
 	checkPackageEntryPoints(config);
 	checkPackageFiles(config);
