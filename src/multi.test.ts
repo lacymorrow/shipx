@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import { buildNpmAuthOptions, batchPublishNpm } from "./multi.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+import { buildNpmAuthOptions, batchPublishNpm, reevaluateProjectPublishability } from "./multi.ts";
+import type { DiscoveredProject } from "./discover.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 // ── Auth option selection ──────────────────────────────────────────────
@@ -160,5 +164,89 @@ describe("batchPublishNpm — OTP per-package", () => {
 			{ name: "pkg-ok", success: true },
 			{ name: "pkg-fail", success: false },
 		]);
+	});
+});
+
+describe("reevaluateProjectPublishability", () => {
+	let root: string;
+
+	beforeEach(() => {
+		root = mkdtempSync(resolve(tmpdir(), "shipx-reeval-"));
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	function writePkg(dir: string, pkg: object): void {
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(resolve(dir, "package.json"), JSON.stringify(pkg));
+	}
+
+	function makeProject(path: string): DiscoveredProject {
+		return {
+			name: "x",
+			dirName: "x",
+			path,
+			version: "1.0.0",
+			private: false,
+			hasNpm: false,
+			changeCount: 0,
+			lastTag: "",
+			branch: "main",
+			dirty: false,
+			archived: false,
+		};
+	}
+
+	function makeConfig(cwd: string, npmEnabled = true): ResolvedConfig {
+		const cfg = makeFakeConfig("reeval");
+		cfg.steps.npm = npmEnabled;
+		cfg.npm.targets = [{ cwd, access: "public" }];
+		cfg.npm.cwd = cwd;
+		return cfg;
+	}
+
+	test("publishable target: hasNpm becomes true", () => {
+		writePkg(root, { name: "pkg", bin: "x.js" });
+		const project = makeProject(root);
+		reevaluateProjectPublishability(project, makeConfig(root));
+		expect(project.hasNpm).toBe(true);
+		expect(project.name).toBe("pkg");
+	});
+
+	test('private target: hasNpm becomes false', () => {
+		writePkg(root, { name: "pkg", bin: "x.js", private: true });
+		const project = makeProject(root);
+		reevaluateProjectPublishability(project, makeConfig(root));
+		expect(project.hasNpm).toBe(false);
+		expect(project.private).toBe(true);
+	});
+
+	// Regression: the previous inline `pkg.private !== true && !pkg.workspaces`
+	// check would have marked this publishable, missing the entry-points gap
+	// that caused the original npx-lacy disaster. Reported on PR #49 by Gemini.
+	test("target with no bin/main/exports/module: hasNpm becomes false", () => {
+		writePkg(root, { name: "pkg" });
+		const project = makeProject(root);
+		project.hasNpm = true; // simulate stale "publishable" state
+		reevaluateProjectPublishability(project, makeConfig(root));
+		expect(project.hasNpm).toBe(false);
+	});
+
+	test("steps.npm disabled: hasNpm is forced false regardless of pkg", () => {
+		writePkg(root, { name: "pkg", bin: "x.js" });
+		const project = makeProject(root);
+		project.hasNpm = true;
+		reevaluateProjectPublishability(project, makeConfig(root, false));
+		expect(project.hasNpm).toBe(false);
+	});
+
+	test("unreadable target: hasNpm becomes false, does not throw", () => {
+		// No package.json written.
+		const project = makeProject(root);
+		project.hasNpm = true;
+		expect(() => reevaluateProjectPublishability(project, makeConfig(root))).not.toThrow();
+		expect(project.hasNpm).toBe(false);
 	});
 });

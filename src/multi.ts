@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
+import { isUnpublishablePackage } from "./detect.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
@@ -198,7 +199,7 @@ interface PreparedProject {
  * project never gets a tag + GitHub release without an npm publish purely
  * because state went stale (see LAC-2090).
  */
-function reevaluateProjectPublishability(
+export function reevaluateProjectPublishability(
 	project: DiscoveredProject,
 	config: ResolvedConfig,
 ): void {
@@ -211,7 +212,11 @@ function reevaluateProjectPublishability(
 	for (const target of config.npm.targets) {
 		try {
 			const pkg = readJson(resolve(target.cwd, "package.json"));
-			const isPublishable = pkg.private !== true && !pkg.workspaces;
+			// Single source of truth: isUnpublishablePackage covers private,
+			// workspaces, AND the no-entry-points case. Inlining the check
+			// here previously missed the entry-points reason (caught by
+			// Gemini on PR #49).
+			const isPublishable = isUnpublishablePackage(pkg) === null;
 			if (isPublishable) {
 				anyPublishable = true;
 				// Prefer the published-package name over the root dir name for
@@ -605,8 +610,12 @@ export async function multiMain(argv: string[]): Promise<void> {
 		for (const target of pp.config.npm.targets) {
 			try {
 				const pkg = readJson(resolve(target.cwd, "package.json"));
-				if (pkg.private === true) reasons.push(`${target.cwd}: private`);
-				else if (pkg.workspaces) reasons.push(`${target.cwd}: workspace root`);
+				// Delegate to isUnpublishablePackage so the reason string stays
+				// in sync with detection (covers private, workspaces, AND
+				// missing entry points — Gemini caught the entry-points gap on
+				// PR #49).
+				const reason = isUnpublishablePackage(pkg);
+				if (reason) reasons.push(`${target.cwd}: ${reason}`);
 			} catch {
 				reasons.push(`${target.cwd}: package.json unreadable`);
 			}
