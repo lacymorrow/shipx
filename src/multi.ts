@@ -258,7 +258,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 				? pc.yellow(`${proj.changeCount} new commit${proj.changeCount === 1 ? "" : "s"}`)
 				: pc.dim("no changes");
 			const dirtyFlag = proj.dirty ? pc.red(" [dirty]") : "";
-			const npmFlag = proj.hasNpm ? "" : pc.dim(" (private)");
+			const npmFlag = proj.hasNpm ? "" : pc.dim(proj.private ? " (private)" : " (workspace)");
 			const nameNote = proj.name !== proj.dirName ? pc.dim(` [${proj.name}]`) : "";
 			return {
 				value: proj.path,
@@ -355,6 +355,29 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isDryRun) config.dryRun = true;
 		if (isAnyBranch) config.anyBranch = true;
 		if (customTag) config.tag = customTag;
+
+		// Re-derive npm publishability from loaded config — config targets are
+		// authoritative over discover-time detection.  When config explicitly
+		// points npm.cwd at a subdirectory, that sub-package determines hasNpm.
+		if (config.steps.npm) {
+			const hasCustomTarget = config.npm.targets.some(
+				(t) => t.cwd !== project.path,
+			);
+			if (hasCustomTarget) {
+				project.hasNpm = config.npm.targets.some((t) => {
+					try {
+						const pkg = readJson(resolve(t.cwd, "package.json"));
+						const isPublishable = pkg.private !== true && !pkg.workspaces;
+						if (isPublishable && typeof pkg.name === "string") {
+							project.name = pkg.name;
+						}
+						return isPublishable;
+					} catch {
+						return false;
+					}
+				});
+			}
+		}
 
 		if (!isBeta && !isAnyBranch && project.branch !== config.git.releaseBranch) {
 			const canSwitch = branchExists(project.path, config.git.releaseBranch);
