@@ -46,7 +46,7 @@ function makeConfig(root: string): ResolvedConfig {
 			pushFlags: ["--no-verify"],
 		},
 		github: { draft: false, assets: [] },
-		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }] },
+		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
 		hooks: {},
 	};

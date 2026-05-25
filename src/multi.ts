@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
+import { isUnpublishablePackage } from "./detect.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
@@ -184,6 +185,54 @@ interface PreparedProject {
 	isBeta: boolean;
 }
 
+/**
+ * Re-read the current state of every npm publish target and update
+ * `project.hasNpm` / `project.private` / `project.name` accordingly.
+ *
+ * Discover reads the working tree once at scan time. After that, the user can:
+ *   - switch the project's branch (changing package.json content), or
+ *   - have configured `npm.cwd` / `npm.targets` pointing at a subpackage that
+ *     wasn't visible at discover time.
+ *
+ * Both make `project.hasNpm` stale. We re-derive from whatever package.json
+ * files `npm publish` will actually read at the moment of decision, so a
+ * project never gets a tag + GitHub release without an npm publish purely
+ * because state went stale (see LAC-2090).
+ */
+export function reevaluateProjectPublishability(
+	project: DiscoveredProject,
+	config: ResolvedConfig,
+): void {
+	if (!config.steps.npm) {
+		project.hasNpm = false;
+		return;
+	}
+
+	let anyPublishable = false;
+	for (const target of config.npm.targets) {
+		try {
+			const pkg = readJson(resolve(target.cwd, "package.json"));
+			// Single source of truth: isUnpublishablePackage covers private,
+			// workspaces, AND the no-entry-points case. Inlining the check
+			// here previously missed the entry-points reason (caught by
+			// Gemini on PR #49).
+			const isPublishable = isUnpublishablePackage(pkg) === null;
+			if (isPublishable) {
+				anyPublishable = true;
+				// Prefer the published-package name over the root dir name for
+				// registry-version reconciliation later.
+				if (typeof pkg.name === "string") project.name = pkg.name;
+				if (target.cwd === project.path) project.private = false;
+			} else if (target.cwd === project.path) {
+				project.private = pkg.private === true;
+			}
+		} catch {
+			// unreadable target — treat as not publishable
+		}
+	}
+	project.hasNpm = anyPublishable;
+}
+
 function parseFlag(argv: string[], flag: string): string | undefined {
 	const idx = argv.indexOf(flag);
 	if (idx === -1 || idx === argv.length - 1) return undefined;
@@ -356,28 +405,10 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isAnyBranch) config.anyBranch = true;
 		if (customTag) config.tag = customTag;
 
-		// Re-derive npm publishability from loaded config — config targets are
-		// authoritative over discover-time detection.  When config explicitly
-		// points npm.cwd at a subdirectory, that sub-package determines hasNpm.
-		if (config.steps.npm) {
-			const hasCustomTarget = config.npm.targets.some(
-				(t) => t.cwd !== project.path,
-			);
-			if (hasCustomTarget) {
-				project.hasNpm = config.npm.targets.some((t) => {
-					try {
-						const pkg = readJson(resolve(t.cwd, "package.json"));
-						const isPublishable = pkg.private !== true && !pkg.workspaces;
-						if (isPublishable && typeof pkg.name === "string") {
-							project.name = pkg.name;
-						}
-						return isPublishable;
-					} catch {
-						return false;
-					}
-				});
-			}
-		}
+		// Re-derive npm publishability from the loaded config (config targets
+		// are authoritative over discover-time detection: explicit npm.cwd or
+		// auto-detected subpackage may differ from the project root).
+		reevaluateProjectPublishability(project, config);
 
 		if (!isBeta && !isAnyBranch && project.branch !== config.git.releaseBranch) {
 			const canSwitch = branchExists(project.path, config.git.releaseBranch);
@@ -406,6 +437,19 @@ export async function multiMain(argv: string[]): Promise<void> {
 				} catch (err) {
 					p.log.error(`Failed to switch branch: ${errorText(err)}`);
 					continue;
+				}
+
+				// Branch switch changes package.json content — re-evaluate
+				// publishability so the new branch's `private` / entry-points
+				// drive Phase 2 (not the stale pre-switch working tree). Without
+				// this, a tag + GitHub release can be produced while npm publish
+				// silently skips. See LAC-2090.
+				const wasNpm = project.hasNpm;
+				reevaluateProjectPublishability(project, config);
+				if (wasNpm !== project.hasNpm) {
+					p.log.info(
+						`${project.dirName}: npm publishability changed after branch switch — ${pc.yellow(String(wasNpm))} → ${pc.green(String(project.hasNpm))}`,
+					);
 				}
 			}
 		}
@@ -555,6 +599,33 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	// Phase 2: Batch npm publish
 	const npmProjects = prepared.filter((pp) => pp.config.steps.npm && pp.project.hasNpm);
+
+	// Surface any prepared project that is about to skip npm publish despite
+	// having steps.npm=true. A tag + GitHub release without an npm publish is
+	// almost always a bug or a misconfiguration — never let it happen silently
+	// (see LAC-2090).
+	const skippedFromNpm = prepared.filter((pp) => pp.config.steps.npm && !pp.project.hasNpm);
+	for (const pp of skippedFromNpm) {
+		const reasons: string[] = [];
+		for (const target of pp.config.npm.targets) {
+			try {
+				const pkg = readJson(resolve(target.cwd, "package.json"));
+				// Delegate to isUnpublishablePackage so the reason string stays
+				// in sync with detection (covers private, workspaces, AND
+				// missing entry points — Gemini caught the entry-points gap on
+				// PR #49).
+				const reason = isUnpublishablePackage(pkg);
+				if (reason) reasons.push(`${target.cwd}: ${reason}`);
+			} catch {
+				reasons.push(`${target.cwd}: package.json unreadable`);
+			}
+		}
+		const reasonStr = reasons.length ? ` (${reasons.join("; ")})` : "";
+		p.log.warn(
+			`${pc.yellow(pp.project.dirName)} was tagged and pushed but will NOT be published to npm${reasonStr}.\n` +
+			`  If this is unexpected, check ${pc.cyan("npm.cwd")} in your shipx config or the package.json on this branch.`,
+		);
+	}
 
 	if (npmProjects.length) {
 		if (isDryRun) {

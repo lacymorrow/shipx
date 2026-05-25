@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { detectPublishTarget } from "./detect.ts";
 import type { ResolvedConfig, ShipConfig } from "./types.ts";
 import { detectDefaultBranch, exec, readJson } from "./utils.ts";
 
@@ -53,6 +54,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		cwd: "",
 		access: "public",
 		targets: [],
+		autoDetectedReason: "",
 	},
 	homebrew: {
 		tapPath: "",
@@ -90,6 +92,7 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 			cwd: user.npm?.cwd ?? base.npm.cwd,
 			access: user.npm?.access ?? base.npm.access,
 			targets: [], // resolved in loadConfig after cwd is finalized
+			autoDetectedReason: "",
 		},
 		homebrew: {
 			...base.homebrew,
@@ -132,12 +135,57 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 
 	const merged = mergeConfig(DEFAULTS, userConfig);
 
-	if (!merged.packageJsonPaths.length && existsSync(pkgPath)) {
-		merged.packageJsonPaths = ["package.json"];
+	const userSetCwd = typeof userConfig.npm?.cwd === "string" && userConfig.npm.cwd.length > 0;
+	const userSetTargets = (userConfig.npm?.targets?.length ?? 0) > 0;
+	const userSetPackageJsonPaths = (userConfig.packageJsonPaths?.length ?? 0) > 0;
+	const userSetVersionSource = typeof userConfig.versionSource === "string" && userConfig.versionSource.length > 0;
+
+	// Try auto-detection only when the user gave us no publish-target hint
+	// (no npm.cwd, no npm.targets). The detector is conservative: it only
+	// picks a subpackage when the root package.json is clearly unpublishable
+	// (private, workspace root, or no entry points).
+	let detectedRelativePath: string | null = null;
+	if (!merged.npm.cwd) {
+		if (!userSetCwd && !userSetTargets) {
+			const detected = detectPublishTarget(root);
+			if (detected.target) {
+				merged.npm.cwd = detected.target.cwd;
+				merged.npm.autoDetectedReason = `auto-detected npm.cwd → ${detected.target.relativePath} (${detected.reason})`;
+				detectedRelativePath = detected.target.relativePath;
+			} else if (detected.ambiguousCandidates && detected.ambiguousCandidates.length > 0) {
+				// Ambiguous: don't pick one silently. Fall back to root and
+				// record the ambiguity so preflight can warn loudly.
+				merged.npm.cwd = root;
+				merged.npm.autoDetectedReason = `${detected.reason}. Candidates: ${detected.ambiguousCandidates.map((c) => c.relativePath).join(", ")}`;
+			} else {
+				merged.npm.cwd = root;
+			}
+		} else {
+			merged.npm.cwd = root;
+		}
+	} else {
+		merged.npm.cwd = resolve(root, merged.npm.cwd);
 	}
 
-	if (!merged.npm.cwd) {
-		merged.npm.cwd = root;
+	// When auto-detection picked a subpackage as npm.cwd, that same package's
+	// version field is what the registry will see — so default packageJsonPaths
+	// and versionSource to it too, unless the user already configured them.
+	// Without this, shipx would bump root/package.json and publish the
+	// subpackage with a stale version.
+	if (detectedRelativePath) {
+		const subPath = `${detectedRelativePath}/package.json`;
+		if (!userSetPackageJsonPaths) {
+			merged.packageJsonPaths = existsSync(pkgPath)
+				? [subPath, "package.json"]
+				: [subPath];
+		}
+		if (!userSetVersionSource) {
+			merged.versionSource = subPath;
+		}
+	}
+
+	if (!merged.packageJsonPaths.length && existsSync(pkgPath)) {
+		merged.packageJsonPaths = ["package.json"];
 	}
 
 	const userTargets = userConfig.npm?.targets;
