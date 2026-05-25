@@ -82,7 +82,17 @@ function targetDisplayName(target: NpmTarget): string {
  * entry points that exist locally — the lacy-style "no bin field on npm"
  * disaster (LAC-2055). Best-effort: warns but never fails the release,
  * since the registry can lag and offline environments shouldn't break.
+ *
+ * The registry CDN can take tens of seconds to surface a just-published
+ * version, so we retry `npm view` with backoff before giving up.
  */
+const VERIFY_RETRY_DELAYS_MS = [0, 2000, 5000, 10000, 20000];
+
+function sleepSync(ms: number): void {
+	if (ms <= 0) return;
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 export function verifyPublishedArtifact(cwd: string): void {
 	let localPkg: Record<string, unknown>;
 	try {
@@ -94,13 +104,19 @@ export function verifyPublishedArtifact(cwd: string): void {
 	const name = localPkg.name;
 	const version = localPkg.version;
 
-	let raw: string;
-	try {
-		raw = exec("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
-	} catch {
-		// Registry lag / network / package not found — don't fail the release.
+	let raw: string | undefined;
+	for (const delay of VERIFY_RETRY_DELAYS_MS) {
+		sleepSync(delay);
+		try {
+			raw = exec("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
+			break;
+		} catch {
+			// Likely registry propagation lag — keep retrying.
+		}
+	}
+	if (raw === undefined) {
 		p.log.warn(
-			`Could not verify ${pc.cyan(`${name}@${version}`)} on the registry (npm view failed).\n` +
+			`Could not verify ${pc.cyan(`${name}@${version}`)} on the registry after retries.\n` +
 			`  Manually verify with ${pc.green(`npm view ${name}@${version}`)} once propagation completes.`,
 		);
 		return;
