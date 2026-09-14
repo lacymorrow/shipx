@@ -2,11 +2,11 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import type { NpmTarget, ResolvedConfig } from "../types.ts";
-import { errorText, exec, readJson } from "../utils.ts";
+import { errorText, exec, readJson, run, sleep } from "../utils.ts";
 
-function isNpmLoggedIn(cwd?: string): string | false {
+async function isNpmLoggedIn(cwd?: string): Promise<string | false> {
 	try {
-		return exec("npm", ["whoami"], { cwd }).trim();
+		return (await run("npm", ["whoami"], { cwd })).trim();
 	} catch {
 		return false;
 	}
@@ -23,13 +23,14 @@ function isOtpError(err: unknown): boolean {
 }
 
 async function ensureNpmAuth(cwd?: string): Promise<boolean> {
-	const user = isNpmLoggedIn(cwd);
+	const spinner = p.spinner();
+	spinner.start("Checking npm auth");
+	const user = await isNpmLoggedIn(cwd);
 	if (user) {
-		p.log.info(`npm authenticated as ${pc.cyan(user)}`);
+		spinner.stop(`npm authenticated as ${pc.cyan(user)}`);
 		return true;
 	}
-
-	p.log.warn("Not logged in to npm");
+	spinner.stop(pc.yellow("Not logged in to npm"));
 	const action = await p.confirm({
 		message: "Log in to npm now?",
 		initialValue: true,
@@ -45,7 +46,7 @@ async function ensureNpmAuth(cwd?: string): Promise<boolean> {
 		return false;
 	}
 
-	const after = isNpmLoggedIn(cwd);
+	const after = await isNpmLoggedIn(cwd);
 	if (after) {
 		p.log.success(`Logged in as ${pc.cyan(after)}`);
 		return true;
@@ -88,12 +89,7 @@ function targetDisplayName(target: NpmTarget): string {
  */
 const VERIFY_RETRY_DELAYS_MS = [0, 2000, 5000, 10000, 20000];
 
-function sleepSync(ms: number): void {
-	if (ms <= 0) return;
-	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-export function verifyPublishedArtifact(cwd: string): void {
+export async function verifyPublishedArtifact(cwd: string): Promise<void> {
 	let localPkg: Record<string, unknown>;
 	try {
 		localPkg = readJson(resolve(cwd, "package.json"));
@@ -104,23 +100,26 @@ export function verifyPublishedArtifact(cwd: string): void {
 	const name = localPkg.name;
 	const version = localPkg.version;
 
+	const label = pc.cyan(`${name}@${version}`);
+	const spinner = p.spinner();
+	spinner.start(`Verifying ${label} on the registry`);
+
 	let raw: string | undefined;
 	for (const delay of VERIFY_RETRY_DELAYS_MS) {
-		sleepSync(delay);
+		await sleep(delay);
 		try {
-			raw = exec("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
+			raw = await run("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
 			break;
 		} catch {
 			// Likely registry propagation lag — keep retrying.
 		}
 	}
 	if (raw === undefined) {
-		p.log.warn(
-			`Could not verify ${pc.cyan(`${name}@${version}`)} on the registry after retries.\n` +
-			`  Manually verify with ${pc.green(`npm view ${name}@${version}`)} once propagation completes.`,
-		);
+		spinner.stop(pc.yellow(`Could not verify ${label} on the registry after retries`));
+		p.log.warn(`Manually verify with ${pc.green(`npm view ${name}@${version}`)} once propagation completes.`);
 		return;
 	}
+	spinner.stop(`Verified ${label} on the registry`);
 
 	let view: Record<string, unknown>;
 	try {
@@ -224,7 +223,7 @@ async function publishMultipleTargets(
 				if (tryWebPublish(args, target.cwd)) {
 					p.log.success(`  Published ${pc.green(displayName)}`);
 					results.set(target, { name: displayName, success: true });
-					verifyPublishedArtifact(target.cwd);
+					await verifyPublishedArtifact(target.cwd);
 				} else {
 					p.log.error(`  Failed to publish ${displayName}`);
 					results.set(target, { name: displayName, success: false });
@@ -239,10 +238,10 @@ async function publishMultipleTargets(
 			const spinner = p.spinner();
 			spinner.start(`Publishing ${displayName}`);
 			try {
-				exec("npm", attemptArgs, { cwd: target.cwd });
+				await run("npm", attemptArgs, { cwd: target.cwd });
 				spinner.stop(pc.green(`Published ${displayName}`));
 				results.set(target, { name: displayName, success: true });
-				verifyPublishedArtifact(target.cwd);
+				await verifyPublishedArtifact(target.cwd);
 			} catch (err) {
 				spinner.stop(pc.red(`Failed to publish ${displayName}`));
 				p.log.message(pc.dim(errorText(err)));
@@ -327,7 +326,7 @@ export async function publishNpm(
 		p.log.info("Publishing to npm with browser authentication…");
 		if (tryWebPublish(baseArgs, cwd)) {
 			p.log.success(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
-			verifyPublishedArtifact(cwd);
+			await verifyPublishedArtifact(cwd);
 			return true;
 		}
 		p.log.error("npm publish with web auth failed");
@@ -339,9 +338,9 @@ export async function publishNpm(
 		spinner.start(`Publishing to npm${isBeta ? " (beta)" : ""}`);
 
 		try {
-			exec("npm", attemptArgs, { cwd });
+			await run("npm", attemptArgs, { cwd });
 			spinner.stop(pc.green(`Published to npm${isBeta ? " (beta)" : ""}`));
-			verifyPublishedArtifact(cwd);
+			await verifyPublishedArtifact(cwd);
 			return true;
 		} catch (err) {
 			spinner.stop(pc.yellow("npm publish failed"));
@@ -387,7 +386,7 @@ export async function publishNpm(
 			p.log.info("Opening browser for authentication…");
 			if (tryWebPublish(baseArgs, cwd)) {
 				p.log.success(pc.green("Published to npm"));
-				verifyPublishedArtifact(cwd);
+				await verifyPublishedArtifact(cwd);
 				return true;
 			}
 			p.log.error("npm publish with web auth failed");
@@ -410,9 +409,9 @@ export async function publishNpm(
 		const retrySpinner = p.spinner();
 		retrySpinner.start("Publishing to npm");
 		try {
-			exec("npm", retryArgs, { cwd });
+			await run("npm", retryArgs, { cwd });
 			retrySpinner.stop(pc.green("Published to npm"));
-			verifyPublishedArtifact(cwd);
+			await verifyPublishedArtifact(cwd);
 			return true;
 		} catch (err) {
 			retrySpinner.stop(pc.red("npm publish failed"));

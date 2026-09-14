@@ -74,7 +74,7 @@ describe("tagExists (M9)", () => {
 });
 
 describe("commitAndTag tag-collision guard (M9)", () => {
-	test("throws BEFORE committing when the target tag already exists", () => {
+	test("throws BEFORE committing when the target tag already exists", async () => {
 		const dir = initRepo();
 		try {
 			git(dir, ["tag", "v1.0.0"]);
@@ -84,7 +84,7 @@ describe("commitAndTag tag-collision guard (M9)", () => {
 			writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.0" }));
 
 			const cfg = makeConfig(dir);
-			expect(() => commitAndTag(cfg, "v1.0.0", "1.0.0", ["package.json"])).toThrow(/already exist/i);
+			await expect(commitAndTag(cfg, "v1.0.0", "1.0.0", ["package.json"])).rejects.toThrow(/already exist/i);
 
 			// HEAD didn't advance — the throw aborted before `git commit`.
 			const after = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf-8" }).trim();
@@ -94,12 +94,12 @@ describe("commitAndTag tag-collision guard (M9)", () => {
 		}
 	});
 
-	test("creates commit and tag when target tag is fresh", () => {
+	test("creates commit and tag when target tag is fresh", async () => {
 		const dir = initRepo();
 		try {
 			writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "1.0.1" }));
 			const cfg = makeConfig(dir);
-			commitAndTag(cfg, "v1.0.1", "1.0.1", ["package.json"]);
+			await commitAndTag(cfg, "v1.0.1", "1.0.1", ["package.json"]);
 			expect(tagExists(dir, "v1.0.1")).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });

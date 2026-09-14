@@ -1,5 +1,8 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFile, execFileSync, execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export function exec(
 	file: string,
@@ -11,6 +14,30 @@ export function exec(
 		stdio: opts?.stdio ?? "pipe",
 		encoding: "utf-8",
 	}) as string;
+}
+
+/**
+ * Async exec. Use this for anything that runs while a spinner is showing:
+ * a sync exec blocks the event loop, so the spinner freezes on one frame and
+ * the CLI looks hung. Pipe-only; for interactive commands that need the
+ * terminal (`stdio: "inherit"`, e.g. `npm login`) keep using `exec`.
+ */
+export async function run(
+	file: string,
+	args: string[],
+	opts?: { cwd?: string },
+): Promise<string> {
+	const { stdout } = await execFileAsync(file, args, {
+		cwd: opts?.cwd,
+		encoding: "utf-8",
+		maxBuffer: 64 * 1024 * 1024,
+	});
+	return stdout;
+}
+
+export function sleep(ms: number): Promise<void> {
+	if (ms <= 0) return Promise.resolve();
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function shell(
@@ -78,11 +105,11 @@ export function getGithubSlug(dir: string): string | null {
  * (no GitHub remote, `gh` not installed, not authenticated, repo not found, etc).
  * Callers should treat `null` as "can't tell — proceed" rather than a hard failure.
  */
-export function isRepoArchived(dir: string): boolean | null {
+export async function isRepoArchived(dir: string): Promise<boolean | null> {
 	const slug = getGithubSlug(dir);
 	if (!slug) return null;
 	try {
-		const output = exec("gh", ["repo", "view", slug, "--json", "isArchived"], { cwd: dir });
+		const output = await run("gh", ["repo", "view", slug, "--json", "isArchived"], { cwd: dir });
 		const data = JSON.parse(output) as { isArchived?: boolean };
 		return data.isArchived === true;
 	} catch {

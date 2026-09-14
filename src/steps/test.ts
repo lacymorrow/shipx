@@ -3,7 +3,7 @@ import pc from "picocolors";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec, readJson } from "../utils.ts";
+import { errorText, readJson, run } from "../utils.ts";
 
 function detectPackageManager(root: string): string {
 	if (existsSync(resolve(root, "bun.lockb")) || existsSync(resolve(root, "bun.lock"))) return "bun";
@@ -20,7 +20,7 @@ function hasTestScript(root: string, scriptName: string): boolean {
 	return !!scripts?.[scriptName];
 }
 
-export function runTests(config: ResolvedConfig): void {
+export async function runTests(config: ResolvedConfig): Promise<void> {
 	const scriptName = config.testScript;
 
 	if (!hasTestScript(config.root, scriptName)) {
@@ -41,7 +41,7 @@ export function runTests(config: ResolvedConfig): void {
 	spinner.start(`Running ${pc.cyan(display)}`);
 
 	try {
-		exec(pm, args, { cwd: config.root, stdio: "pipe" });
+		await run(pm, args, { cwd: config.root });
 		spinner.stop(`Tests passed`);
 	} catch (err) {
 		spinner.stop(pc.red("Tests failed"));

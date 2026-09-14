@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Spinners animate while commands run** (`utils.ts`, all `steps/`). Every step shelled out with a synchronous exec, which blocked the event loop, so the clack spinner froze on one frame and long steps (npm publish, git push, GitHub release, Homebrew download and push, tests, clean install) looked hung. Steps now await an async `run()` helper, so the spinner keeps ticking. The post-publish registry check also replaced its blocking `Atomics.wait` sleep with an async one and now shows its own spinner. Interactive commands that need the terminal (`npm login`, web-auth publish) still use the sync `exec()`.
 - **Batch npm publish now collects a fresh OTP per package** (`multi.ts`). Previously `--multi` prompted for one OTP and reused it for all packages; subsequent publishes received `EOTP` because TOTP codes are single-use. Each package now gets its own prompt. Web auth (passkey) is listed first and marked "recommended" for multi-package deploys since it avoids the OTP problem entirely. [LAC-2018]
 
 ### Fixed (LAC-2021)

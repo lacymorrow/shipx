@@ -6,13 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { detectDefaultBranch, errorText, exec } from "../utils.ts";
+import { detectDefaultBranch, errorText, exec, run } from "../utils.ts";
 import { updateFormulaUrlAndSha, updateBinaryFormulaAssets, type BinaryAssetInfo } from "./homebrew-formula.ts";
 
-function downloadAndHash(url: string): string {
+async function downloadAndHash(url: string): Promise<string> {
 	const tmpFile = join(tmpdir(), `shipx-asset-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	try {
-		exec("curl", ["-fsLo", tmpFile, url]);
+		await run("curl", ["-fsLo", tmpFile, url]);
 		const data = readFileSync(tmpFile);
 		return createHash("sha256").update(data).digest("hex");
 	} finally {
@@ -64,8 +64,8 @@ export async function publishHomebrew(
 		}
 
 		const branch = detectDefaultBranch(tapPath);
-		exec("git", ["checkout", branch], { cwd: tapPath });
-		exec("git", ["pull", "--rebase", "origin", branch], { cwd: tapPath });
+		await run("git", ["checkout", branch], { cwd: tapPath });
+		await run("git", ["pull", "--rebase", "origin", branch], { cwd: tapPath });
 
 		const formula = readFileSync(formulaPath, "utf-8");
 		let updatedFormula: string;
@@ -83,7 +83,7 @@ export async function publishHomebrew(
 				spinner.message(`Downloading ${pc.dim(filename)}`);
 				let sha256: string;
 				try {
-					sha256 = downloadAndHash(assetUrl);
+					sha256 = await downloadAndHash(assetUrl);
 				} catch (dlErr) {
 					spinner.stop(pc.red(`Failed to download ${filename}`));
 					p.log.error(errorText(dlErr));
@@ -118,7 +118,7 @@ export async function publishHomebrew(
 			const tarballUrl = `https://github.com/${repoSlug}/archive/refs/tags/${tag}.tar.gz`;
 			let sha256: string;
 			try {
-				sha256 = downloadAndHash(tarballUrl);
+				sha256 = await downloadAndHash(tarballUrl);
 			} catch (dlErr) {
 				spinner.stop(pc.red("Failed to download tarball"));
 				p.log.error(errorText(dlErr));
@@ -144,13 +144,13 @@ export async function publishHomebrew(
 		writeFileSync(formulaPath, updatedFormula);
 
 		const formulaName = formulaFile.replace(/^Formula\//, "").replace(/\.rb$/, "");
-		exec("git", ["add", formulaFile], { cwd: tapPath });
+		await run("git", ["add", formulaFile], { cwd: tapPath });
 
 		const msg = commitMessage
 			.replace(/\{tag\}/g, tag)
 			.replace(/\{formula\}/g, formulaName);
-		exec("git", ["commit", "-m", msg], { cwd: tapPath });
-		exec("git", ["push"], { cwd: tapPath });
+		await run("git", ["commit", "-m", msg], { cwd: tapPath });
+		await run("git", ["push"], { cwd: tapPath });
 
 		spinner.stop(`Homebrew formula updated to ${pc.green(tag)}`);
 	} catch (err) {

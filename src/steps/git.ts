@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
-import { exec, errorText } from "../utils.ts";
+import { exec, errorText, run } from "../utils.ts";
 
 export class PartialPushError extends Error {
 	readonly pushedTags: string[];
@@ -54,12 +54,12 @@ export function tagExists(cwd: string, tag: string): boolean {
 	}
 }
 
-export function commitAndTag(
+export async function commitAndTag(
 	config: ResolvedConfig,
 	tag: string,
 	newVersion: string,
 	filesToStage: string[],
-): void {
+): Promise<void> {
 	const spinner = p.spinner();
 	spinner.start("Committing and tagging");
 
@@ -75,20 +75,20 @@ export function commitAndTag(
 
 	try {
 		if (filesToStage.length > 0) {
-			exec("git", ["add", ...filesToStage], { cwd: config.root });
+			await run("git", ["add", ...filesToStage], { cwd: config.root });
 		}
 
 		const message = config.git.commitMessage.replace(/\{tag\}/g, tag);
-		exec(
+		await run(
 			"git",
 			["commit", "-m", message, ...config.git.commitFlags],
 			{ cwd: config.root },
 		);
-		exec("git", ["tag", tag], { cwd: config.root });
+		await run("git", ["tag", tag], { cwd: config.root });
 
 		const extraTags = resolveExtraTags(config, tag, newVersion);
 		for (const extraTag of extraTags) {
-			exec("git", ["tag", extraTag], { cwd: config.root });
+			await run("git", ["tag", extraTag], { cwd: config.root });
 		}
 
 		const tagSummary = [tag, ...extraTags].map((t) => pc.green(t)).join(", ");
@@ -113,16 +113,16 @@ function hasDirtyTree(cwd: string): boolean {
 	}
 }
 
-function pushTagsTracked(
+async function pushTagsTracked(
 	config: ResolvedConfig,
 	tag: string,
 	newVersion: string,
 	branchPushed: boolean,
-): string[] {
+): Promise<string[]> {
 	const pushedTags: string[] = [];
 
 	try {
-		exec("git", ["push", "origin", tag], { cwd: config.root });
+		await run("git", ["push", "origin", tag], { cwd: config.root });
 		pushedTags.push(tag);
 	} catch (err) {
 		throw new PartialPushError(
@@ -135,7 +135,7 @@ function pushTagsTracked(
 	const extraTags = resolveExtraTags(config, tag, newVersion);
 	for (const extraTag of extraTags) {
 		try {
-			exec("git", ["push", "origin", extraTag], { cwd: config.root });
+			await run("git", ["push", "origin", extraTag], { cwd: config.root });
 			pushedTags.push(extraTag);
 		} catch (err) {
 			throw new PartialPushError(
@@ -159,7 +159,7 @@ export async function pushChanges(
 	spinner.start("Pushing to GitHub");
 
 	try {
-		exec(
+		await run(
 			"git",
 			["push", "origin", branch, ...config.git.pushFlags],
 			{ cwd: config.root },
@@ -185,7 +185,7 @@ export async function pushChanges(
 			const stashSpinner = p.spinner();
 			stashSpinner.start("Stashing dirty files before pull");
 			try {
-				exec(
+				await run(
 					"git",
 					["stash", "push", "--include-untracked", "-m", stashMessage],
 					{ cwd: config.root },
@@ -201,7 +201,7 @@ export async function pushChanges(
 		const pullSpinner = p.spinner();
 		pullSpinner.start("Pulling with rebase");
 		try {
-			exec("git", ["pull", "--rebase", "origin", branch], { cwd: config.root });
+			await run("git", ["pull", "--rebase", "origin", branch], { cwd: config.root });
 			pullSpinner.stop("Pulled successfully");
 		} catch (pullErr) {
 			pullSpinner.stop(pc.red("Pull failed"));
@@ -223,7 +223,7 @@ export async function pushChanges(
 			const popSpinner = p.spinner();
 			popSpinner.start("Restoring stashed files");
 			try {
-				exec("git", ["stash", "pop"], { cwd: config.root });
+				await run("git", ["stash", "pop"], { cwd: config.root });
 				popSpinner.stop("Restored stashed files");
 			} catch (popErr) {
 				popSpinner.stop(pc.red("Stash pop failed"));
@@ -237,7 +237,7 @@ export async function pushChanges(
 		const retrySpinner = p.spinner();
 		retrySpinner.start("Retrying push");
 		try {
-			exec(
+			await run(
 				"git",
 				["push", "origin", branch, ...config.git.pushFlags],
 				{ cwd: config.root },
@@ -251,7 +251,7 @@ export async function pushChanges(
 		const tagSpinner = p.spinner();
 		tagSpinner.start("Pushing tags");
 		try {
-			const pushedTags = pushTagsTracked(config, tag, newVersion, true);
+			const pushedTags = await pushTagsTracked(config, tag, newVersion, true);
 			tagSpinner.stop("Pushed to GitHub");
 			return pushedTags;
 		} catch (tagErr) {
@@ -261,7 +261,7 @@ export async function pushChanges(
 	}
 
 	try {
-		const pushedTags = pushTagsTracked(config, tag, newVersion, true);
+		const pushedTags = await pushTagsTracked(config, tag, newVersion, true);
 		spinner.stop("Pushed to GitHub");
 		return pushedTags;
 	} catch (tagErr) {

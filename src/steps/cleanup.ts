@@ -1,9 +1,10 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec } from "../utils.ts";
+import { errorText, run } from "../utils.ts";
 
 function detectInstall(root: string): { cmd: string; args: string[] } {
 	if (existsSync(resolve(root, "bun.lockb")) || existsSync(resolve(root, "bun.lock"))) {
@@ -18,7 +19,7 @@ function detectInstall(root: string): { cmd: string; args: string[] } {
 	return { cmd: "npm", args: ["ci"] };
 }
 
-export function runCleanup(config: ResolvedConfig): void {
+export async function runCleanup(config: ResolvedConfig): Promise<void> {
 	const nodeModules = resolve(config.root, "node_modules");
 
 	if (config.dryRun) {
@@ -31,7 +32,7 @@ export function runCleanup(config: ResolvedConfig): void {
 
 	if (existsSync(nodeModules)) {
 		try {
-			rmSync(nodeModules, { recursive: true, force: true });
+			await rm(nodeModules, { recursive: true, force: true });
 		} catch (err) {
 			spinner.stop(pc.red("Failed to remove node_modules"));
 			p.log.error(errorText(err));
@@ -44,7 +45,7 @@ export function runCleanup(config: ResolvedConfig): void {
 	spinner.message(`Installing dependencies (${pc.cyan(display)})`);
 
 	try {
-		exec(install.cmd, install.args, { cwd: config.root, stdio: "pipe" });
+		await run(install.cmd, install.args, { cwd: config.root });
 		spinner.stop("Clean install complete");
 	} catch (err) {
 		spinner.stop(pc.red("Install failed"));

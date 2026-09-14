@@ -8,20 +8,23 @@ const execCalls: Array<{ file: string; args: string[]; opts?: Record<string, unk
 let tapDefaultBranch = "master";
 let gitStatusOutput = "";
 
+function mockExec(file: string, args: string[], opts?: Record<string, unknown>): string {
+	execCalls.push({ file, args, opts });
+	if (file === "git" && args[0] === "status" && args[1] === "--porcelain") {
+		return gitStatusOutput;
+	}
+	if (file === "curl") {
+		// Short-circuit the tarball download: throwing here lets publishHomebrew
+		// exit cleanly after the checkout/pull calls we want to assert on, without
+		// requiring a real fixture file or network access.
+		throw new Error("mock: skipping download");
+	}
+	return "";
+}
+
 mock.module("../utils.ts", () => ({
-	exec: (file: string, args: string[], opts?: Record<string, unknown>) => {
-		execCalls.push({ file, args, opts });
-		if (file === "git" && args[0] === "status" && args[1] === "--porcelain") {
-			return gitStatusOutput;
-		}
-		if (file === "curl") {
-			// Short-circuit the tarball download: throwing here lets publishHomebrew
-			// exit cleanly after the checkout/pull calls we want to assert on, without
-			// requiring a real fixture file or network access.
-			throw new Error("mock: skipping download");
-		}
-		return "";
-	},
+	exec: mockExec,
+	run: async (file: string, args: string[], opts?: Record<string, unknown>) => mockExec(file, args, opts),
 	detectDefaultBranch: () => tapDefaultBranch,
 	errorText: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));

@@ -3,17 +3,17 @@ import pc from "picocolors";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec } from "../utils.ts";
+import { errorText, run } from "../utils.ts";
 
 /**
  * Bump Cargo workspace version(s) using `cargo set-version --workspace`.
  * Returns the list of workspace directories that were bumped (for git staging).
  * Requires the `cargo-edit` crate: `cargo install cargo-edit`.
  */
-export function bumpCargoWorkspaces(
+export async function bumpCargoWorkspaces(
 	config: ResolvedConfig,
 	newVersion: string,
-): string[] {
+): Promise<string[]> {
 	if (!config.cargoWorkspaces.length) return [];
 
 	const spinner = p.spinner();
@@ -29,7 +29,7 @@ export function bumpCargoWorkspaces(
 		}
 
 		try {
-			exec("cargo", ["set-version", "--workspace", newVersion], { cwd: absDir });
+			await run("cargo", ["set-version", "--workspace", newVersion], { cwd: absDir });
 			bumped.push(relDir);
 		} catch (err) {
 			spinner.stop(pc.red(`Failed to bump Cargo versions in ${pc.cyan(relDir)}`));

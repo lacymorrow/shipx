@@ -91,6 +91,7 @@ The flow runs in three phases:
 - Tabs for indentation (see existing files).
 - No default exports. `cli.ts` re-exports `ShipConfig` / `BumpFileConfig` as the public type surface for downstream `shipx.config.ts` consumers.
 - Use `exec()` from `utils.ts` (argv form, no shell) over `shell()` — only fall back to `shell()` when a true shell pipeline is needed.
+- Anything that runs while a spinner is showing must use the async `run()` from `utils.ts` and be awaited. A sync `exec()` blocks the event loop, so the spinner freezes on one frame and the CLI looks hung. Keep `exec()` for fast local queries (`git rev-parse`, `git status`) and for interactive commands that need the terminal (`stdio: "inherit"`, e.g. `npm login`). Never sleep with `Atomics.wait`; use `sleep()` from `utils.ts`.
 - When adding user-visible output, prefer `p.log.*` and `picocolors` (`pc`) over `console.log` so it integrates with the clack UI.
 
 ## Where things live (non-code)

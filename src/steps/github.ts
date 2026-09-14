@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { ResolvedConfig } from "../types.ts";
-import { errorText, exec } from "../utils.ts";
+import { errorText, exec, run } from "../utils.ts";
 
 function globToRegex(pattern: string): RegExp {
 	const escaped = pattern
@@ -31,18 +31,18 @@ export function resolveGlobs(root: string, patterns: string[]): string[] {
 	return [...new Set(results)].sort();
 }
 
-function uploadAssets(
+async function uploadAssets(
 	config: ResolvedConfig,
 	tag: string,
 	files: string[],
-): { uploaded: string[]; failed: string[] } {
+): Promise<{ uploaded: string[]; failed: string[] }> {
 	const uploaded: string[] = [];
 	const failed: string[] = [];
 
 	for (const file of files) {
 		const name = basename(file);
 		try {
-			exec("gh", ["release", "upload", tag, file, "--clobber"], {
+			await run("gh", ["release", "upload", tag, file, "--clobber"], {
 				cwd: config.root,
 			});
 			uploaded.push(name);
@@ -55,12 +55,12 @@ function uploadAssets(
 	return { uploaded, failed };
 }
 
-export function createGithubRelease(
+export async function createGithubRelease(
 	config: ResolvedConfig,
 	tag: string,
 	changelog: string,
 	isBeta: boolean,
-): boolean {
+): Promise<boolean> {
 	const isDraft = config.github.draft;
 	const assetPatterns = config.github.assets;
 	const hasAssets = assetPatterns.length > 0;
@@ -72,7 +72,7 @@ export function createGithubRelease(
 
 	let url = "";
 	try {
-		const result = exec(
+		const result = await run(
 			"gh",
 			[
 				"release", "create", tag,
@@ -111,7 +111,7 @@ export function createGithubRelease(
 			const assetSpinner = p.spinner();
 			assetSpinner.start(`Uploading ${files.length} release asset(s)`);
 
-			const { uploaded, failed } = uploadAssets(config, tag, files);
+			const { uploaded, failed } = await uploadAssets(config, tag, files);
 
 			if (failed.length > 0) {
 				assetSpinner.stop(pc.yellow(`Uploaded ${uploaded.length}/${files.length} assets (${failed.length} failed)`));

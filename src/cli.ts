@@ -260,19 +260,19 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	let branch = "main";
 	if (config.steps.preflight) {
 		await runHook("prePreflight", config.hooks.prePreflight, hookCtx());
-		branch = runPreflight(config, isBeta);
+		branch = await runPreflight(config, isBeta);
 		await runHook("postPreflight", config.hooks.postPreflight, hookCtx());
 	}
 
 	if (config.steps.cleanup) {
 		await runHook("preCleanup", config.hooks.preCleanup, hookCtx());
-		runCleanup(config);
+		await runCleanup(config);
 		await runHook("postCleanup", config.hooks.postCleanup, hookCtx());
 	}
 
 	if (config.steps.test) {
 		await runHook("preTest", config.hooks.preTest, hookCtx());
-		runTests(config);
+		await runTests(config);
 		await runHook("postTest", config.hooks.postTest, hookCtx());
 	}
 
@@ -317,7 +317,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			}
 		} else {
 			bumpVersionFiles(config, newVersion);
-			cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+			cargoStageDirs = await bumpCargoWorkspaces(config, newVersion);
 		}
 		await runHook("postBump", config.hooks.postBump, hookCtx());
 	}
@@ -346,7 +346,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			p.log.info(`${pc.dim("[dry-run]")} Would commit and tag: ${allTags}`);
 		} else {
 			const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
-			commitAndTag(config, gitTag, newVersion, filesToStage);
+			await commitAndTag(config, gitTag, newVersion, filesToStage);
 			commitWasMade = config.steps.commit;
 		}
 		await runHook("postCommit", config.hooks.postCommit, hookCtx());
@@ -408,7 +408,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				: "";
 			p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release for ${pc.green(gitTag)}${draftLabel}${assetLabel}`);
 		} else {
-			createGithubRelease(config, gitTag, changelog, isBeta);
+			await createGithubRelease(config, gitTag, changelog, isBeta);
 		}
 		await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 	}

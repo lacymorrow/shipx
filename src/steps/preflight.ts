@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { isUnpublishablePackage } from "../detect.ts";
 import type { ResolvedConfig } from "../types.ts";
-import { exec, isRepoArchived, readJson } from "../utils.ts";
+import { exec, isRepoArchived, readJson, run } from "../utils.ts";
 
 /**
  * Path to the package.json that will actually be published — read from
@@ -49,9 +49,9 @@ function checkBranch(config: ResolvedConfig, isBeta: boolean): string {
 	return branch;
 }
 
-function checkRemoteSynced(config: ResolvedConfig, branch: string): void {
+async function checkRemoteSynced(config: ResolvedConfig, branch: string): Promise<void> {
 	try {
-		exec("git", ["fetch", "origin", branch, "--quiet"], { cwd: config.root });
+		await run("git", ["fetch", "origin", branch, "--quiet"], { cwd: config.root });
 	} catch {
 		return;
 	}
@@ -84,8 +84,8 @@ function checkTagNotExists(config: ResolvedConfig, tagPrefix: string, currentVer
 	}
 }
 
-function checkArchived(config: ResolvedConfig): void {
-	if (isRepoArchived(config.root) === true) {
+async function checkArchived(config: ResolvedConfig): Promise<void> {
+	if ((await isRepoArchived(config.root)) === true) {
 		p.log.error(
 			"The GitHub repository is archived — pushes will be rejected. " +
 			`Unarchive it on GitHub or remove the project from shipx before retrying.`,
@@ -136,7 +136,7 @@ export function resolveNpmRegistry(
 	return undefined;
 }
 
-function checkNpmAuth(config: ResolvedConfig): void {
+async function checkNpmAuth(config: ResolvedConfig): Promise<void> {
 	if (!config.steps.npm) return;
 
 	const pkgPath = publishPkgPath(config);
@@ -146,13 +146,14 @@ function checkNpmAuth(config: ResolvedConfig): void {
 	}
 
 	const args = ["whoami", ...(registry ? ["--registry", registry] : [])];
+	const spinner = p.spinner();
+	spinner.start("Checking npm auth");
 	try {
-		const user = exec("npm", args, { cwd: config.npm.cwd }).trim();
-		if (user) {
-			const where = registry ? ` (${pc.dim(registry)})` : "";
-			p.log.info(`npm: authenticated as ${pc.cyan(user)}${where}`);
-		}
+		const user = (await run("npm", args, { cwd: config.npm.cwd })).trim();
+		const where = registry ? ` (${pc.dim(registry)})` : "";
+		spinner.stop(`npm: authenticated as ${pc.cyan(user || "unknown")}${where}`);
 	} catch {
+		spinner.stop(pc.yellow("npm: not logged in"));
 		const where = registry ? ` against ${pc.cyan(registry)}` : "";
 		p.log.warn(
 			`npm: not logged in${where}. You'll be prompted to authenticate during publish.\n` +
@@ -245,7 +246,7 @@ function checkPackagePublishable(config: ResolvedConfig): void {
 	}
 }
 
-export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
+export async function runPreflight(config: ResolvedConfig, isBeta: boolean): Promise<string> {
 	const spinner = p.spinner();
 	spinner.start("Running preflight checks");
 
@@ -257,7 +258,7 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 
 	checkCleanTree(config);
 	const branch = checkBranch(config, isBeta);
-	checkRemoteSynced(config, branch);
+	await checkRemoteSynced(config, branch);
 
 	const versionPkgPath = config.versionSource
 		? resolve(config.root, config.versionSource)
@@ -269,12 +270,12 @@ export function runPreflight(config: ResolvedConfig, isBeta: boolean): string {
 		}
 	}
 
-	checkArchived(config);
+	await checkArchived(config);
 
 	spinner.stop("Preflight OK");
 
 	checkPackagePublishable(config);
-	checkNpmAuth(config);
+	await checkNpmAuth(config);
 	checkPackageEntryPoints(config);
 	checkPackageFiles(config);
 

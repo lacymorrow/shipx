@@ -503,7 +503,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 					p.log.info(`${pc.dim("[dry-run]")} Would bump: ${files.map((f: string) => pc.cyan(f)).join(", ")}`);
 				} else {
 					bumpVersionFiles(config, newVersion);
-					cargoStageDirs = bumpCargoWorkspaces(config, newVersion);
+					cargoStageDirs = await bumpCargoWorkspaces(config, newVersion);
 					pstate.didBump = true;
 					pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
 					pstate.didComputeBumpedFiles = true;
@@ -530,7 +530,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 						pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
 						pstate.didComputeBumpedFiles = true;
 					}
-					commitAndTag(config, tag, newVersion, pstate.bumpedFiles);
+					await commitAndTag(config, tag, newVersion, pstate.bumpedFiles);
 					pstate.didCommit = true;
 				}
 				await runHook("postCommit", config.hooks.postCommit, hookCtx());
@@ -552,7 +552,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would create GitHub release`);
 				} else {
-					createGithubRelease(config, tag, changelog, isBeta);
+					await createGithubRelease(config, tag, changelog, isBeta);
 				}
 				await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 			}
