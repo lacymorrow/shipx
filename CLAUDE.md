@@ -31,7 +31,7 @@ Single entry point `src/cli.ts` calls `loadConfig()` then invokes step modules i
 ### Config resolution (`src/config.ts`)
 
 Lookup order, first hit wins:
-1. `shipx.config.ts` / `shipx.config.js` (dynamic `import()`)
+1. `shipx.config.mts` / `.ts` / `.mjs` / `.js` (dynamic `import()` via `importConfigModule()`, which drops Node's `MODULE_TYPELESS_PACKAGE_JSON` warning so non-ESM projects stay quiet). `.mts` is the recommended form.
 2. `.shipxrc.json` / `.shipxrc`
 3. `"shipx"` key in `package.json`
 4. Bare defaults

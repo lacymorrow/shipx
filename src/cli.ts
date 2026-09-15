@@ -66,7 +66,7 @@ ${pc.bold("ENVIRONMENT")}
 
 ${pc.bold("CONFIG")}
   shipx looks for configuration in this order:
-  1. shipx.config.ts / shipx.config.js
+  1. shipx.config.mts / .ts / .mjs / .js
   2. .shipxrc.json / .shipxrc
   3. "shipx" key in package.json
   4. Defaults (auto-detects package.json, Cargo.toml, homebrew-tap)

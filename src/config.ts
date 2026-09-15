@@ -103,11 +103,39 @@ function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit
 	};
 }
 
+const MODULE_CONFIG_EXT = /\.m?[jt]s$/;
+
+/**
+ * Import a config module without Node's MODULE_TYPELESS_PACKAGE_JSON warning.
+ * A `.ts`/`.js` config that uses `export default` in a package without
+ * `"type": "module"` makes Node print that warning, and shipx shouldn't
+ * require the project it ships to be ESM. `.mts`/`.mjs` never trigger it.
+ * Only that one warning code is dropped, and only for the duration of the import.
+ */
+export async function importConfigModule(path: string): Promise<Record<string, unknown>> {
+	const emitWarning = process.emitWarning;
+	process.emitWarning = function (warning: string | Error, ...rest: unknown[]) {
+		const opts = rest[0];
+		const code =
+			(typeof opts === "object" && opts !== null ? (opts as { code?: string }).code : rest[1]) ??
+			(warning as { code?: string }).code;
+		if (code === "MODULE_TYPELESS_PACKAGE_JSON") return;
+		return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
+	} as typeof process.emitWarning;
+	try {
+		return await import(path);
+	} finally {
+		process.emitWarning = emitWarning;
+	}
+}
+
 export async function loadConfig(root: string): Promise<ResolvedConfig> {
 	let userConfig: ShipConfig = {};
 
 	const candidates = [
+		resolve(root, "shipx.config.mts"),
 		resolve(root, "shipx.config.ts"),
+		resolve(root, "shipx.config.mjs"),
 		resolve(root, "shipx.config.js"),
 		resolve(root, ".shipxrc.json"),
 		resolve(root, ".shipxrc"),
@@ -115,8 +143,8 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) {
-			if (candidate.endsWith(".ts") || candidate.endsWith(".js")) {
-				const mod = await import(candidate);
+			if (MODULE_CONFIG_EXT.test(candidate)) {
+				const mod = await importConfigModule(candidate);
 				userConfig = mod.default ?? mod;
 			} else {
 				userConfig = JSON.parse(readFileSync(candidate, "utf-8"));

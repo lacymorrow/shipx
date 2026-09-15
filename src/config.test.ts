@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -129,5 +129,52 @@ describe("loadConfig npm.cwd auto-detection", () => {
 		const cfg = await loadConfig(root);
 		expect(cfg.npm.cwd).toBe(resolve(root, "packages/other"));
 		expect(cfg.npm.autoDetectedReason).toBe("");
+	});
+});
+
+describe("loadConfig config file formats", () => {
+	let root: string;
+
+	beforeEach(() => {
+		root = mkdtempSync(resolve(tmpdir(), "shipx-fmt-"));
+		// No "type": "module", the case that used to warn under Node.
+		writeFileSync(resolve(root, "package.json"), JSON.stringify({ name: "cjs-pkg" }));
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	function writeConfig(file: string, testScript: string): void {
+		writeFileSync(resolve(root, file), `export default { testScript: "${testScript}" };\n`);
+	}
+
+	for (const file of ["shipx.config.mts", "shipx.config.ts", "shipx.config.mjs", "shipx.config.js"]) {
+		test(`loads ${file}`, async () => {
+			writeConfig(file, file);
+			const cfg = await loadConfig(root);
+			expect(cfg.testScript).toBe(file);
+		});
+	}
+
+	test(".mts wins over .ts when both exist", async () => {
+		writeConfig("shipx.config.ts", "ts");
+		writeConfig("shipx.config.mts", "mts");
+		const cfg = await loadConfig(root);
+		expect(cfg.testScript).toBe("mts");
+	});
+
+	test("Node loads a .ts config in a typeless package without MODULE_TYPELESS_PACKAGE_JSON", () => {
+		writeConfig("shipx.config.ts", "quiet");
+		const configModule = resolve(import.meta.dir, "config.ts");
+		const script = `const { importConfigModule } = await import(${JSON.stringify(configModule)});
+const mod = await importConfigModule(${JSON.stringify(resolve(root, "shipx.config.ts"))});
+console.log(mod.default.testScript);`;
+		const result = spawnSync("node", ["--input-type=module", "-e", script], {
+			cwd: root,
+			encoding: "utf-8",
+		});
+		expect(result.stderr).not.toContain("MODULE_TYPELESS_PACKAGE_JSON");
+		expect(result.stdout.trim()).toBe("quiet");
 	});
 });

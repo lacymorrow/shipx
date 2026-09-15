@@ -29,7 +29,7 @@
 Releasing a package is the same nine commands every time, in the same order, and you don't want to forget any of them or run them out of order.
 
 - **Beautiful interactive UI** built on [@clack/prompts](https://github.com/bombshell-dev/clack) — spinners, prompts, and confirms that you actually enjoy looking at.
-- **One config, every channel.** npm, GitHub releases, Cargo workspaces (Tauri-friendly), and Homebrew tap formula — all from a single `shipx.config.ts`.
+- **One config, every channel.** npm, GitHub releases, Cargo workspaces (Tauri-friendly), and Homebrew tap formula — all from a single `shipx.config.mts`.
 - **Stop on red.** Preflight refuses to run on a dirty tree or the wrong branch. Each step is a single shell-out — no hidden state, no surprises.
 - **Beta path.** `shipx --beta` increments `-beta.N` and publishes with the `beta` dist-tag. Homebrew is skipped automatically.
 - **Recoverable.** If `npm publish` fails (auth, OTP, network), shipx drops into an interactive retry loop instead of aborting the whole pipeline.
@@ -97,12 +97,14 @@ Each step is independently toggleable. Set `steps.<name>: false` to skip it.
 
 shipx looks for config in this order, first hit wins:
 
-1. `shipx.config.ts` / `shipx.config.js`
+1. `shipx.config.mts` / `.ts` / `.mjs` / `.js`
 2. `.shipxrc.json` / `.shipxrc`
 3. `"shipx"` key in `package.json`
 4. Defaults (auto-detects `package.json`, `src-tauri/Cargo.toml`, and sibling `../homebrew-tap`)
 
-### Example `shipx.config.ts`
+Use `shipx.config.mts`. It's always an ES module, so it works the same whether or not your `package.json` sets `"type": "module"`. Existing `shipx.config.ts` files keep working too.
+
+### Example `shipx.config.mts`
 
 ```ts
 import type { ShipConfig } from "@lacymorrow/shipx";
@@ -174,7 +176,7 @@ export default {
 shipx auto-detects `src-tauri/Cargo.toml` and adds it to `cargoWorkspaces`. Requires `cargo install cargo-edit`.
 
 ```ts
-// shipx.config.ts
+// shipx.config.mts
 export default {
   cargoWorkspaces: ["src-tauri"], // explicit; or omit for auto-detection
   steps: { npm: false }, // Tauri apps usually don't publish to npm
