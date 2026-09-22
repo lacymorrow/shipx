@@ -157,6 +157,20 @@ describe("loadConfig config file formats", () => {
 		});
 	}
 
+	/** True when the `node` on PATH can import a .ts file without a flag. */
+	function nodeStripsTypes(): boolean {
+		const probe = spawnSync("node", ["--version"], { encoding: "utf-8" });
+		if (probe.status !== 0) return false;
+		const m = /^v(\d+)\.(\d+)/.exec(probe.stdout.trim());
+		if (!m) return false;
+		const major = Number(m[1]);
+		const minor = Number(m[2]);
+		if (major >= 24) return true;
+		if (major === 23) return minor >= 6;
+		if (major === 22) return minor >= 18;
+		return false;
+	}
+
 	test(".mts wins over .ts when both exist", async () => {
 		writeConfig("shipx.config.ts", "ts");
 		writeConfig("shipx.config.mts", "mts");
@@ -164,7 +178,12 @@ describe("loadConfig config file formats", () => {
 		expect(cfg.testScript).toBe("mts");
 	});
 
-	test("Node loads a .ts config in a typeless package without MODULE_TYPELESS_PACKAGE_JSON", () => {
+	// Importing a .ts file needs Node's type stripping, which is unflagged from 22.18
+	// and 23.6. The CI matrix still covers Node 20, where this cannot work, so the
+	// test reports as skipped there rather than passing without having run.
+	test.skipIf(!nodeStripsTypes())(
+		"Node loads a .ts config in a typeless package without MODULE_TYPELESS_PACKAGE_JSON",
+		() => {
 		writeConfig("shipx.config.ts", "quiet");
 		const configModule = resolve(import.meta.dir, "config.ts");
 		const script = `const { importConfigModule } = await import(${JSON.stringify(configModule)});
@@ -176,5 +195,6 @@ console.log(mod.default.testScript);`;
 		});
 		expect(result.stderr).not.toContain("MODULE_TYPELESS_PACKAGE_JSON");
 		expect(result.stdout.trim()).toBe("quiet");
-	});
+		},
+	);
 });
