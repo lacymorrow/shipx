@@ -57,6 +57,15 @@ export interface ShipConfig {
 	/** Additional files with regex-based version bumping */
 	bumpFiles?: BumpFileConfig[];
 	/**
+	 * Keep a Changelog file to record each release in, relative to the project root.
+	 * Default: 'CHANGELOG.md'. Set to '' to leave the file alone.
+	 *
+	 * The file is only updated when it already exists; shipx never creates one.
+	 * Content under `## [Unreleased]` is promoted into the new release section;
+	 * when that section is empty, the release is written from the commits instead.
+	 */
+	changelogFile?: string;
+	/**
 	 * Cargo workspace directories to version-bump via `cargo set-version --workspace`.
 	 * Each path is relative to the project root and should contain a Cargo.toml.
 	 * Auto-detected: if `src-tauri/Cargo.toml` exists and this is not configured, it is added automatically.

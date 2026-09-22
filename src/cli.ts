@@ -9,6 +9,7 @@ import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
+import { updateChangelogFile } from "./steps/changelog-file.ts";
 import { runCleanup } from "./steps/cleanup.ts";
 import { createGithubRelease } from "./steps/github.ts";
 import { commitAndTag, pushChanges, PartialPushError, planRollback } from "./steps/git.ts";
@@ -322,12 +323,18 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		await runHook("postBump", config.hooks.postBump, hookCtx());
 	}
 
+	let changelogFileToStage: string | null = null;
 	if (config.steps.changelog) {
 		await runHook("preChangelog", config.hooks.preChangelog, hookCtx());
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would generate changelog from commits since last tag`);
+			if (config.changelogFile) {
+				p.log.info(`${pc.dim("[dry-run]")} Would add ${pc.green(newVersion)} to ${pc.cyan(config.changelogFile)} if it exists`);
+			}
 		} else {
-			changelog = generateChangelog(config, gitTag);
+			const generated = generateChangelog(config, gitTag);
+			changelog = generated.body;
+			changelogFileToStage = updateChangelogFile(config, newVersion, gitTag, generated.commits);
 		}
 		await runHook("postChangelog", config.hooks.postChangelog, hookCtx());
 	}
@@ -345,7 +352,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			const allTags = [gitTag, ...extraTags].map((t) => pc.green(t)).join(", ");
 			p.log.info(`${pc.dim("[dry-run]")} Would commit and tag: ${allTags}`);
 		} else {
-			const filesToStage = [...getFilesToStage(config), ...cargoStageDirs];
+			const filesToStage = [
+				...getFilesToStage(config),
+				...cargoStageDirs,
+				...(changelogFileToStage ? [changelogFileToStage] : []),
+			];
 			await commitAndTag(config, gitTag, newVersion, filesToStage);
 			commitWasMade = config.steps.commit;
 		}

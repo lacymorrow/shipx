@@ -14,6 +14,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		packageJsonPaths: [],
 		versionSource: "",
 		bumpFiles: [],
+		changelogFile: "",
 		cargoWorkspaces: [],
 		testScript: "test",
 		steps: {

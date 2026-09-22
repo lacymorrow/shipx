@@ -146,10 +146,11 @@ export default {
 |---|---|---|---|
 | `packageJsonPaths` | `string[]` | Auto (`["package.json"]`) | Paths to `package.json` files to bump |
 | `bumpFiles` | `BumpFileConfig[]` | `[]` | Additional files with regex-based version bumping |
+| `changelogFile` | `string` | `"CHANGELOG.md"` | Keep a Changelog file to record each release in. Only updated if it already exists; shipx never creates one. Use `""` to leave it alone. |
 | `cargoWorkspaces` | `string[]` | Auto (`["src-tauri"]` if exists) | Cargo workspace dirs to bump via `cargo set-version --workspace`. Use `[]` to opt out. |
 | `steps.preflight` | `boolean` | `true` | Require clean tree + correct branch |
 | `steps.bumpVersion` | `boolean` | `true` | Update version in `package.json` + bump files |
-| `steps.changelog` | `boolean` | `true` | Generate changelog from `git log` since last tag |
+| `steps.changelog` | `boolean` | `true` | Generate the release notes from `git log` since last tag, and record the release in `changelogFile` |
 | `steps.commit` | `boolean` | `true` | Single commit for all bumped files |
 | `steps.tag` | `boolean` | `true` | Create git tag (plus any `extraTags`) |
 | `steps.push` | `boolean` | `true` | Push commit + tag(s) to `origin` |

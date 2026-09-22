@@ -99,4 +99,4 @@ The flow runs in three phases:
 - `.github/assets/` — logo (SVG + PNG), horizontal lockup (light + dark), social-preview banner. SVGs are source of truth; PNGs are rasterized via `@resvg/resvg-js` for npm/social embeds. To regenerate: `node /tmp/shipx-rasterize.mjs` (or write a similar script — there's no committed rasterize script yet).
 - `media/demo.tape` — VHS recording script. Re-record with `vhs media/demo.tape` (requires `brew install vhs`). Output lands at `.github/assets/demo.gif`.
 - `media/setup-demo.sh` — sourced by the tape to spin up a throwaway `/tmp/shipx-demo` project that lets the demo run end-to-end without touching the network. Edit this if the demo flow needs to evolve.
-- `CHANGELOG.md` — Keep-a-Changelog. Add to `[Unreleased]` as you go; shipx itself doesn't auto-update this file.
+- `CHANGELOG.md` — Keep-a-Changelog. Add to `[Unreleased]` as you go. On release, shipx promotes whatever is under `[Unreleased]` into a new version section and empties it. When `[Unreleased]` is empty it writes the section from the commits instead (`feat`/`fix`/`perf`/`refactor`/`revert` only). Disable with `changelogFile: ""`.
