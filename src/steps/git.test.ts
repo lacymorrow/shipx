@@ -32,6 +32,7 @@ function makeConfig(root: string): ResolvedConfig {
 		packageJsonPaths: [],
 		versionSource: "",
 		bumpFiles: [],
+		changelogFile: "",
 		cargoWorkspaces: [],
 		testScript: "test",
 		steps: {

@@ -93,7 +93,14 @@ export function formatGrouped(commits: Commit[]): string {
 	return sections.join("\n\n");
 }
 
-export function generateChangelog(config: ResolvedConfig, tag: string): string {
+export interface GeneratedChangelog {
+	/** Markdown for the GitHub release body. */
+	body: string;
+	/** The parsed commits behind it, so other steps can render them differently. */
+	commits: Commit[];
+}
+
+export function generateChangelog(config: ResolvedConfig, tag: string): GeneratedChangelog {
 	let lastTag = "";
 	try {
 		lastTag = exec("git", ["describe", "--tags", "--abbrev=0"], { cwd: config.root }).trim();
@@ -104,7 +111,7 @@ export function generateChangelog(config: ResolvedConfig, tag: string): string {
 	if (!lastTag) {
 		const fallback = `- Release ${tag}`;
 		p.note(fallback, "Changelog");
-		return fallback;
+		return { body: fallback, commits: [] };
 	}
 
 	const raw = exec(
@@ -116,12 +123,12 @@ export function generateChangelog(config: ResolvedConfig, tag: string): string {
 	if (!raw) {
 		const fallback = `- Release ${tag}`;
 		p.note(fallback, "Changelog");
-		return fallback;
+		return { body: fallback, commits: [] };
 	}
 
 	const commits = raw.split("\n").map(parseCommit);
 	const changelog = formatGrouped(commits);
 
 	p.note(changelog, "Changelog");
-	return changelog;
+	return { body: changelog, commits };
 }

@@ -9,6 +9,7 @@ import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
+import { updateChangelogFile } from "./steps/changelog-file.ts";
 import { createGithubRelease } from "./steps/github.ts";
 import { commitAndTag, pushChanges } from "./steps/git.ts";
 import { publishHomebrew } from "./steps/homebrew.ts";
@@ -515,8 +516,22 @@ export async function multiMain(argv: string[]): Promise<void> {
 				await runHook("preChangelog", config.hooks.preChangelog, hookCtx());
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would generate changelog`);
+					if (config.changelogFile) {
+						p.log.info(`${pc.dim("[dry-run]")} Would add ${pc.green(newVersion)} to ${pc.cyan(config.changelogFile)} if it exists`);
+					}
 				} else {
-					changelog = generateChangelog(config, tag);
+					const generated = generateChangelog(config, tag);
+					changelog = generated.body;
+					const changelogPath = updateChangelogFile(config, newVersion, tag, generated.commits);
+					if (changelogPath) {
+						// The commit step stages pstate.bumpedFiles, so the changelog has to join it
+						// there or it would be written and then left out of the release commit.
+						if (!pstate.didComputeBumpedFiles) {
+							pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+							pstate.didComputeBumpedFiles = true;
+						}
+						pstate.bumpedFiles.push(changelogPath);
+					}
 				}
 				await runHook("postChangelog", config.hooks.postChangelog, hookCtx());
 			}
