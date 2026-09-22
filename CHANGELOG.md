@@ -12,6 +12,11 @@ Versions missing from this file shipped only a version bump or a dependency upda
 ### Added
 
 - **Releases record themselves in your changelog** (`changelog-file.ts`). When a project has a `CHANGELOG.md`, shipx now writes the release into it and stages it with the release commit. Whatever sits under `## [Unreleased]` is promoted into a new `## [x.y.z] - date` section and `Unreleased` is emptied; when that section is empty, the release is written from the commits instead, mapping `feat` to Added, `fix` to Fixed, and `perf`/`refactor`/`revert` to Changed, with breaking changes leading their category. Housekeeping commits stay out. Link reference definitions are updated when the file already uses them. shipx never creates a changelog, only updates one that exists, and re-running after a failed release will not duplicate a section. Set `changelogFile: ""` to turn it off.
+- **CI runs the tests** (`.github/workflows/ci.yml`). The `test` job typechecked, built, and smoke-tested the binary, but never ran a test.
+
+### Fixed
+
+- **Every test file runs, and they no longer interfere** (`scripts/test.mjs`). `bun test src/tests/` reached 7 of the 20 test files; the other 13 were never run by `bun run test`. Running them together surfaced why: `mock.module()` is global to the bun process, so the mocks in `steps/homebrew.test.ts` replaced `exec` for every file alongside it and `steps/git.test.ts` saw a stubbed git that reported tags which do not exist. Each file now runs in its own process. 20 of 20 files pass, 185 tests.
 
 ## [0.1.22] - 2026-09-14
 
