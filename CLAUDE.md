@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Smoke-test built binary | `node dist/cli.js --help` |
 | Dry-run preview | `bun run src/cli.ts --dry-run` |
 
-There are no tests. Use `typecheck` + manual dev runs against a scratch repo.
+Tests run with `bun run test`, which runs every `src/**/*.test.ts` file in its own bun process via `scripts/test.mjs`. That isolation is load-bearing: `mock.module()` is global to the bun process, so the mocks in `steps/homebrew.test.ts` would otherwise replace `exec` for every file running alongside it and make `steps/git.test.ts` see a stubbed git. Do not collapse this back to a bare `bun test src/`. CI runs typecheck, tests, build, and a `--help` smoke check.
 
 ### Build quirk
 

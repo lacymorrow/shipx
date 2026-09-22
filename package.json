@@ -11,7 +11,7 @@
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
     "dev": "bun run src/cli.ts",
-    "test": "bun test src/tests/"
+    "test": "node scripts/test.mjs"
   },
   "keywords": [
     "release",
