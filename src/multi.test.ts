@@ -53,7 +53,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		steps: {
 			preflight: true, test: false, cleanup: false, changelog: false,
 			bumpVersion: true, commit: true, tag: true, push: true,
-			githubRelease: false, npm: true, homebrew: false,
+			githubRelease: false, npm: true, homebrew: false, watchCi: true,
 		},
 		git: {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],

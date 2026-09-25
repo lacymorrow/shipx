@@ -130,9 +130,14 @@ export function isGitRepo(dir: string): boolean {
 	}
 }
 
+/** Re-show the terminal cursor that a clack spinner may have hidden. */
+export function restoreCursor(): void {
+	process.stdout.write("\x1B[?25h\n");
+}
+
 export function setupCleanExit(): void {
 	process.on("SIGINT", () => {
-		process.stdout.write("\x1B[?25h\n");
+		restoreCursor();
 		process.exit(130);
 	});
 }
