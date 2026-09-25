@@ -12,17 +12,14 @@ import { errorText, run } from "../utils.ts";
  * asking git what changed is the only honest staging list.
  */
 async function changedCargoFiles(root: string): Promise<string[]> {
-	const out = await run("git", ["status", "--porcelain", "-z"], { cwd: root });
-	const entries = out.split("\0").filter(Boolean);
-	const paths: string[] = [];
-	for (let i = 0; i < entries.length; i++) {
-		const status = entries[i].slice(0, 2);
-		paths.push(entries[i].slice(3));
-		// Rename/copy records carry the original path as an extra NUL-separated
-		// field — skip it so it isn't misread as a status entry.
-		if (status[0] === "R" || status[0] === "C") i++;
-	}
-	return paths.filter((path) => /(^|\/)Cargo\.(toml|lock)$/.test(path));
+	// --no-renames keeps every record a plain "XY path" — no extra
+	// original-path field to skip.
+	const out = await run("git", ["status", "--porcelain", "-z", "--no-renames"], { cwd: root });
+	return out
+		.split("\0")
+		.filter(Boolean)
+		.map((entry) => entry.slice(3))
+		.filter((path) => /(^|\/)Cargo\.(toml|lock)$/.test(path));
 }
 
 /**
