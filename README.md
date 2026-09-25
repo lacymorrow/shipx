@@ -157,6 +157,7 @@ export default {
 | `steps.githubRelease` | `boolean` | `true` | Create GitHub release via `gh` CLI |
 | `steps.npm` | `boolean` | `true` | Publish to npm (with interactive retry) |
 | `steps.homebrew` | `boolean` | `true` | Update Homebrew formula SHA + URL |
+| `steps.watchCi` | `boolean` | `true` | When `githubRelease` or `homebrew` is delegated to CI (set to `false`), watch the runs the pushed tag(s) triggered and exit non-zero if one fails. Needs `gh`. Disable with `--no-watch-ci` |
 | `git.releaseBranch` | `string` | `"main"` | Branch required for stable releases |
 | `git.tagPrefix` | `string` | `"v"` | Prefix prepended to the version |
 | `git.extraTags` | `string[]` | `[]` | Additional tags. Templates support `{tag}` (full, e.g. `v0.5.3`) and `{version}` (bare) |

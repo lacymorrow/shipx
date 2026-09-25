@@ -20,7 +20,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		steps: {
 			preflight: true, test: false, cleanup: false, changelog: true,
 			bumpVersion: true, commit: true, tag: true, push: true,
-			githubRelease: true, npm: true, homebrew: true,
+			githubRelease: true, npm: true, homebrew: true, watchCi: true,
 		},
 		git: {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],

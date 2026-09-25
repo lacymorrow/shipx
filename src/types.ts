@@ -84,6 +84,16 @@ export interface ShipConfig {
 		githubRelease?: boolean;
 		npm?: boolean;
 		homebrew?: boolean;
+		/**
+		 * After the push, watch the CI runs the pushed tag(s) triggered and
+		 * report what they did. Only active when at least one step is delegated
+		 * to CI (`githubRelease: false` or `homebrew: false`) and `gh` is on
+		 * PATH. shipx exits non-zero when a watched run fails, and warns when a
+		 * pushed tag triggers no run at all (a misconfigured workflow trigger).
+		 * Default: true. Disable with `--no-watch-ci` or when running shipx
+		 * inside CI itself.
+		 */
+		watchCi?: boolean;
 	};
 	/** Test script to run. Default: 'test' (runs via npm/bun test) */
 	testScript?: string;

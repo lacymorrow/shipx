@@ -7,6 +7,7 @@ import { loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
 import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
+import { ciDelegatedSteps, isGhAvailable, watchCiRuns, type CiWatchResult } from "./steps/ci.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
 import { updateChangelogFile } from "./steps/changelog-file.ts";
@@ -58,6 +59,7 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--any-branch")}       Allow releasing from any branch, not just the release branch
   ${pc.yellow("--no-tests")}         Disable tests (overrides config steps.test=true)
   ${pc.yellow("--no-cleanup")}       Disable cleanup (overrides config steps.cleanup=true)
+  ${pc.yellow("--no-watch-ci")}      Don't watch tag-triggered CI runs after the push
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
   ${pc.yellow("--help, -h")}         Show this help message
   ${pc.yellow("--version, -v")}      Print version
@@ -174,13 +176,14 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const isAnyBranch = argv.includes("--any-branch");
 	const noTests = argv.includes("--no-tests");
 	const noCleanup = argv.includes("--no-cleanup");
+	const noWatchCi = argv.includes("--no-watch-ci");
 	const customTag = parseFlag(argv, "--tag");
 	if (argv.includes("--tag") && !customTag) {
 		p.log.error("--tag requires a value (e.g. --tag next)");
 		process.exit(1);
 	}
 
-	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup"];
+	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup", "--no-watch-ci"];
 	let args = argv.filter((a) => !filteredFlags.includes(a));
 	if (customTag) {
 		const tagIdx = args.indexOf("--tag");
@@ -196,6 +199,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (customTag) config.tag = customTag;
 	if (noTests) config.steps.test = false;
 	if (noCleanup) config.steps.cleanup = false;
+	if (noWatchCi) config.steps.watchCi = false;
 
 	const pkgJsonPaths = config.packageJsonPaths.map((rel) =>
 		resolve(root, rel),
@@ -400,11 +404,9 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				p.log.info(`Tags: ${[gitTag, ...extraTags].map((t) => pc.green(t)).join(", ")}`);
 			}
 
-			const ciHandled: string[] = [];
-			if (!config.steps.githubRelease) ciHandled.push("GitHub Release");
-			if (!config.steps.homebrew) ciHandled.push("Homebrew");
+			const ciHandled = ciDelegatedSteps(config.steps);
 			if (ciHandled.length) {
-				p.log.info(`CI-handled (via tag push): ${ciHandled.join(", ")}`);
+				p.log.info(`Delegated to CI (via tag push): ${ciHandled.join(", ")}`);
 			}
 		}
 		await runHook("postPush", config.hooks.postPush, hookCtx());
@@ -466,6 +468,22 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		p.log.info("Skipping Homebrew for beta release");
 	}
 
+	// When steps are delegated to CI, "the tag was pushed" is not the same as
+	// "CI did the work" — watch the runs the tags triggered and report honestly.
+	let ciWatch: CiWatchResult | null = null;
+	const ciDelegated = ciDelegatedSteps(config.steps);
+	if (config.steps.watchCi && config.steps.push && ciDelegated.length) {
+		if (isDryRun) {
+			p.log.info(`${pc.dim("[dry-run]")} Would watch tag-triggered CI runs for: ${ciDelegated.join(", ")}`);
+		} else if (pushedTags.length) {
+			if (await isGhAvailable()) {
+				ciWatch = await watchCiRuns(config, pushedTags);
+			} else {
+				p.log.warn(`Cannot watch CI runs for ${ciDelegated.join(", ")}: gh not found on PATH`);
+			}
+		}
+	}
+
 	let releaseUrl = `${gitTag}`;
 	try {
 		const remote = exec("git", ["remote", "get-url", "origin"], { cwd: root }).trim();
@@ -480,6 +498,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (isDryRun) {
 		p.outro(`${pc.dim("[dry-run]")} Would release ${pc.green(gitTag)} — no changes were made`);
+	} else if (ciWatch && ciWatch.failed.length) {
+		process.exitCode = 1;
+		p.outro(
+			pc.red(`✗ Released ${gitTag}, but ${ciWatch.failed.length} CI run(s) failed — see the run URL(s) above`),
+		);
 	} else {
 		p.outro(
 			`${pc.green("✓")} Released ${pc.green(gitTag)} — ${pc.cyan(releaseUrl)}`,

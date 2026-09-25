@@ -38,6 +38,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 		githubRelease: true,
 		npm: true,
 		homebrew: true,
+		watchCi: true,
 	},
 	git: {
 		releaseBranch: "main",
