@@ -16,6 +16,7 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ### Fixed
 
+- **Cargo version bumps no longer escape the release commit** (`steps/cargo.ts`). `cargo set-version --workspace` resolves upward to the real workspace root and bumps every member, but shipx staged only the directory it ran the command in — in a typical Tauri layout (`cargoWorkspaces: ["src-tauri"]` under a repo-root workspace), members outside that directory and the root `Cargo.lock` kept the old version inside the release tag. shipx now asks git which `Cargo.toml`/`Cargo.lock` files the bump actually rewrote and stages those paths, wherever they live. ([#58](https://github.com/lacymorrow/shipx/issues/58))
 - **Every test file runs, and they no longer interfere** (`scripts/test.mjs`). `bun test src/tests/` reached 7 of the 20 test files; the other 13 were never run by `bun run test`. Running them together surfaced why: `mock.module()` is global to the bun process, so the mocks in `steps/homebrew.test.ts` replaced `exec` for every file alongside it and `steps/git.test.ts` saw a stubbed git that reported tags which do not exist. Each file now runs in its own process. 20 of 20 files pass, 185 tests.
 
 ## [0.1.22] - 2026-09-14

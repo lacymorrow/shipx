@@ -496,7 +496,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 		let changelog = `- Release ${tag}`;
 		const hookCtx = () => ({ config, version: newVersion, tag, changelog, isBeta });
 		try {
-			let cargoStageDirs: string[] = [];
+			let cargoStagePaths: string[] = [];
 			if (config.steps.bumpVersion) {
 				await runHook("preBump", config.hooks.preBump, hookCtx());
 				if (isDryRun) {
@@ -504,9 +504,9 @@ export async function multiMain(argv: string[]): Promise<void> {
 					p.log.info(`${pc.dim("[dry-run]")} Would bump: ${files.map((f: string) => pc.cyan(f)).join(", ")}`);
 				} else {
 					bumpVersionFiles(config, newVersion);
-					cargoStageDirs = await bumpCargoWorkspaces(config, newVersion);
+					cargoStagePaths = await bumpCargoWorkspaces(config, newVersion);
 					pstate.didBump = true;
-					pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+					pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStagePaths];
 					pstate.didComputeBumpedFiles = true;
 				}
 				await runHook("postBump", config.hooks.postBump, hookCtx());
@@ -527,7 +527,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 						// The commit step stages pstate.bumpedFiles, so the changelog has to join it
 						// there or it would be written and then left out of the release commit.
 						if (!pstate.didComputeBumpedFiles) {
-							pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+							pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStagePaths];
 							pstate.didComputeBumpedFiles = true;
 						}
 						pstate.bumpedFiles.push(changelogPath);
@@ -542,7 +542,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 					p.log.info(`${pc.dim("[dry-run]")} Would commit and tag ${pc.green(tag)}`);
 				} else {
 					if (!pstate.didComputeBumpedFiles) {
-						pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStageDirs];
+						pstate.bumpedFiles = [...getFilesToStage(config), ...cargoStagePaths];
 						pstate.didComputeBumpedFiles = true;
 					}
 					await commitAndTag(config, tag, newVersion, pstate.bumpedFiles);
