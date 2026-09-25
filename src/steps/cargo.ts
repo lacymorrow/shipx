@@ -6,8 +6,27 @@ import type { ResolvedConfig } from "../types.ts";
 import { errorText, run } from "../utils.ts";
 
 /**
+ * List the repo-relative Cargo.toml / Cargo.lock paths currently modified in
+ * the working tree. `cargo set-version --workspace` resolves upward to the
+ * real workspace root, so the rewritten files can live anywhere in the repo —
+ * asking git what changed is the only honest staging list.
+ */
+async function changedCargoFiles(root: string): Promise<string[]> {
+	// --no-renames keeps every record a plain "XY path" — no extra
+	// original-path field to skip.
+	const out = await run("git", ["status", "--porcelain", "-z", "--no-renames"], { cwd: root });
+	return out
+		.split("\0")
+		.filter(Boolean)
+		.map((entry) => entry.slice(3))
+		.filter((path) => /(^|\/)Cargo\.(toml|lock)$/.test(path));
+}
+
+/**
  * Bump Cargo workspace version(s) using `cargo set-version --workspace`.
- * Returns the list of workspace directories that were bumped (for git staging).
+ * Returns the repo-relative Cargo.toml/Cargo.lock paths the bump rewrote
+ * (for git staging) — not just the directories the command ran in, since
+ * cargo bumps every workspace member wherever it lives.
  * Requires the `cargo-edit` crate: `cargo install cargo-edit`.
  */
 export async function bumpCargoWorkspaces(
@@ -48,5 +67,6 @@ export async function bumpCargoWorkspaces(
 	const dirList = bumped.map((d) => pc.cyan(d)).join(", ");
 	spinner.stop(`Bumped Cargo workspace(s) ${dirList} → ${pc.green(newVersion)}`);
 
-	return bumped;
+	if (!bumped.length) return [];
+	return changedCargoFiles(config.root);
 }

@@ -307,7 +307,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(0);
 	}
 
-	let cargoStageDirs: string[] = [];
+	let cargoStagePaths: string[] = [];
 	if (config.steps.bumpVersion) {
 		await runHook("preBump", config.hooks.preBump, hookCtx());
 		if (isDryRun) {
@@ -318,7 +318,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			}
 		} else {
 			bumpVersionFiles(config, newVersion);
-			cargoStageDirs = await bumpCargoWorkspaces(config, newVersion);
+			cargoStagePaths = await bumpCargoWorkspaces(config, newVersion);
 		}
 		await runHook("postBump", config.hooks.postBump, hookCtx());
 	}
@@ -354,7 +354,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		} else {
 			const filesToStage = [
 				...getFilesToStage(config),
-				...cargoStageDirs,
+				...cargoStagePaths,
 				...(changelogFileToStage ? [changelogFileToStage] : []),
 			];
 			await commitAndTag(config, gitTag, newVersion, filesToStage);
