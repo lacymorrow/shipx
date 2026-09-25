@@ -7,6 +7,7 @@ import { isUnpublishablePackage } from "./detect.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
 import { computeIgnoredAfterSelection, loadIgnored, saveIgnored } from "./ignore.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
+import { ciDelegatedSteps, isGhAvailable, watchCiRuns, type CiWatchResult } from "./steps/ci.ts";
 import { bumpVersionFiles, getFilesToStage } from "./steps/bump.ts";
 import { generateChangelog } from "./steps/changelog.ts";
 import { updateChangelogFile } from "./steps/changelog-file.ts";
@@ -104,6 +105,57 @@ export async function batchPublishNpm(
 	return results;
 }
 
+export interface BatchCiProject {
+	dirName: string;
+	config: ResolvedConfig;
+	/** Tags pushChanges actually pushed for this project's release. */
+	pushedTags: string[];
+}
+
+type WatchCiFn = (config: ResolvedConfig, pushedTags: string[]) => Promise<CiWatchResult>;
+
+/** The projects in a batch whose configs delegate a step to CI via tag push. */
+function ciEligibleProjects(projects: BatchCiProject[]): BatchCiProject[] {
+	return projects.filter(
+		(pp) =>
+			pp.config.steps.watchCi &&
+			pp.config.steps.push &&
+			ciDelegatedSteps(pp.config.steps).length > 0,
+	);
+}
+
+/**
+ * Watch the tag-triggered CI runs for every project in the batch that
+ * delegates a step (GitHub release, Homebrew) to CI. Multi mode pushes tags
+ * during the prepare phase and previously never looked at Actions — the same
+ * silent-trust problem #59 fixed for single-project releases (issue #62).
+ */
+export async function watchBatchCi(
+	projects: BatchCiProject[],
+	overrides?: { watchFn?: WatchCiFn; isGhAvailableFn?: () => Promise<boolean> },
+): Promise<{ name: string; result: CiWatchResult }[]> {
+	const eligible = ciEligibleProjects(projects).filter((pp) => pp.pushedTags.length > 0);
+	if (!eligible.length) return [];
+
+	const ghAvailable = overrides?.isGhAvailableFn ?? isGhAvailable;
+	if (!(await ghAvailable())) {
+		p.log.warn(
+			`Cannot watch CI runs for ${eligible.map((pp) => pc.cyan(pp.dirName)).join(", ")}: gh not found on PATH`,
+		);
+		return [];
+	}
+
+	const watch = overrides?.watchFn ?? watchCiRuns;
+	const results: { name: string; result: CiWatchResult }[] = [];
+	for (const pp of eligible) {
+		p.log.message(
+			`  ${pc.cyan("→")} ${pp.dirName} ${pc.dim(`(${ciDelegatedSteps(pp.config.steps).join(", ")})`)}`,
+		);
+		results.push({ name: pp.dirName, result: await watch(pp.config, pp.pushedTags) });
+	}
+	return results;
+}
+
 export interface PipelineState {
 	didBump: boolean;
 	didCommit: boolean;
@@ -184,6 +236,7 @@ interface PreparedProject {
 	tag: string;
 	changelog: string;
 	isBeta: boolean;
+	pushedTags: string[];
 }
 
 /**
@@ -245,6 +298,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 	const isDraft = argv.includes("--draft");
 	const isDryRun = argv.includes("--dry-run");
 	const isAnyBranch = argv.includes("--any-branch");
+	const noWatchCi = argv.includes("--no-watch-ci");
 	const customTag = parseFlag(argv, "--tag");
 	if (argv.includes("--tag") && !customTag) {
 		p.log.error("--tag requires a value (e.g. --tag next)");
@@ -405,6 +459,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 		if (isDryRun) config.dryRun = true;
 		if (isAnyBranch) config.anyBranch = true;
 		if (customTag) config.tag = customTag;
+		if (noWatchCi) config.steps.watchCi = false;
 
 		// Re-derive npm publishability from the loaded config (config targets
 		// are authoritative over discover-time detection: explicit npm.cwd or
@@ -494,6 +549,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 			bumpedFiles: [],
 		};
 		let changelog = `- Release ${tag}`;
+		let pushedTags: string[] = [];
 		const hookCtx = () => ({ config, version: newVersion, tag, changelog, isBeta });
 		try {
 			let cargoStagePaths: string[] = [];
@@ -556,7 +612,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 				if (isDryRun) {
 					p.log.info(`${pc.dim("[dry-run]")} Would push to origin`);
 				} else {
-					await pushChanges(config, project.branch, tag, newVersion);
+					pushedTags = await pushChanges(config, project.branch, tag, newVersion);
 					pstate.didPush = true;
 				}
 				await runHook("postPush", config.hooks.postPush, hookCtx());
@@ -572,7 +628,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 				await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 			}
 
-			prepared.push({ project, config, newVersion, tag, changelog, isBeta });
+			prepared.push({ project, config, newVersion, tag, changelog, isBeta, pushedTags });
 		} catch (err) {
 			p.log.error(`${project.dirName}: ${errorText(err)}`);
 
@@ -586,7 +642,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 			}
 
 			if (failure.canContinueToPublish) {
-				prepared.push({ project, config, newVersion, tag, changelog, isBeta });
+				prepared.push({ project, config, newVersion, tag, changelog, isBeta, pushedTags });
 				p.log.info(`${project.dirName} will still proceed to npm publish`);
 			} else if (failure.needsRollback) {
 				const doRollback = await p.confirm({
@@ -722,10 +778,48 @@ export async function multiMain(argv: string[]): Promise<void> {
 		}
 	}
 
+	// Phase 4: watch delegated CI runs. A pushed tag is not the same as "CI
+	// did the work" — check the runs each project's tags triggered (issue #62).
+	const ciCandidates: BatchCiProject[] = prepared.map((pp) => ({
+		dirName: pp.project.dirName,
+		config: pp.config,
+		pushedTags: pp.pushedTags,
+	}));
+	let ciResults: { name: string; result: CiWatchResult }[] = [];
+	if (isDryRun) {
+		for (const pp of ciEligibleProjects(ciCandidates)) {
+			p.log.info(
+				`${pc.dim("[dry-run]")} Would watch tag-triggered CI runs for ${pc.cyan(pp.dirName)}: ${ciDelegatedSteps(pp.config.steps).join(", ")}`,
+			);
+		}
+	} else if (ciEligibleProjects(ciCandidates).some((pp) => pp.pushedTags.length)) {
+		p.log.step(pc.bold("Phase 4: Delegated CI runs"));
+		ciResults = await watchBatchCi(ciCandidates);
+	}
+
 	// Summary
+	const ciByName = new Map(ciResults.map((r) => [r.name, r.result]));
+	const failedRunCount = ciResults.reduce((n, r) => n + r.result.failed.length, 0);
+	if (failedRunCount > 0) process.exitCode = 1;
+
 	const dryRunPrefix = isDryRun ? `${pc.dim("[dry-run]")} Would release` : "Released";
 	const summary = prepared
-		.map((pp) => `${pc.green("✓")} ${pp.project.dirName} ${pc.green(pp.tag)}`)
+		.map((pp) => {
+			const ci = ciByName.get(pp.project.dirName);
+			if (ci?.failed.length) {
+				return `${pc.red("✗")} ${pp.project.dirName} ${pc.green(pp.tag)} ${pc.red("— CI failed")}`;
+			}
+			if (ci?.missingTags.length) {
+				return `${pc.yellow("⚠")} ${pp.project.dirName} ${pc.green(pp.tag)} ${pc.yellow("— no CI run for tag")}`;
+			}
+			if (ci?.pending.length) {
+				return `${pc.yellow("⚠")} ${pp.project.dirName} ${pc.green(pp.tag)} ${pc.yellow("— CI still running")}`;
+			}
+			return `${pc.green("✓")} ${pp.project.dirName} ${pc.green(pp.tag)}`;
+		})
 		.join("\n  ");
-	p.outro(`${dryRunPrefix} ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}:\n  ${summary}`);
+	const ciSuffix = failedRunCount > 0
+		? pc.red(` — but ${failedRunCount} CI run(s) failed, see the run URL(s) above`)
+		: "";
+	p.outro(`${dryRunPrefix} ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}${ciSuffix}:\n  ${summary}`);
 }

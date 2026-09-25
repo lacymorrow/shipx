@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { buildNpmAuthOptions, batchPublishNpm, reevaluateProjectPublishability } from "./multi.ts";
+import { buildNpmAuthOptions, batchPublishNpm, reevaluateProjectPublishability, watchBatchCi, type BatchCiProject } from "./multi.ts";
 import type { DiscoveredProject } from "./discover.ts";
+import type { CiWatchResult } from "./steps/ci.ts";
 import type { ResolvedConfig } from "./types.ts";
 
 // ── Auth option selection ──────────────────────────────────────────────
@@ -165,6 +166,156 @@ describe("batchPublishNpm — OTP per-package", () => {
 			{ name: "pkg-ok", success: true },
 			{ name: "pkg-fail", success: false },
 		]);
+	});
+});
+
+// ── Batch CI watch (issue #62) ─────────────────────────────────────────
+
+function makeCiResult(overrides?: Partial<CiWatchResult>): CiWatchResult {
+	return { succeeded: [], failed: [], pending: [], missingTags: [], ...overrides };
+}
+
+function makeCiProject(
+	name: string,
+	configure?: (config: ResolvedConfig) => void,
+): BatchCiProject {
+	const config = makeFakeConfig(name);
+	// makeFakeConfig delegates githubRelease and homebrew to CI by default.
+	configure?.(config);
+	return { dirName: name, config, pushedTags: [`v1.0.0-${name}`] };
+}
+
+describe("watchBatchCi", () => {
+	const ghAvailable = async () => true;
+
+	test("watches each project that delegates a step, with its own config and tags", async () => {
+		const watched: { root: string; tags: string[] }[] = [];
+		const projects = [makeCiProject("pkg-a"), makeCiProject("pkg-b")];
+
+		const results = await watchBatchCi(projects, {
+			watchFn: async (config, tags) => {
+				watched.push({ root: config.root, tags });
+				return makeCiResult();
+			},
+			isGhAvailableFn: ghAvailable,
+		});
+
+		expect(watched).toEqual([
+			{ root: "/tmp/fake/pkg-a", tags: ["v1.0.0-pkg-a"] },
+			{ root: "/tmp/fake/pkg-b", tags: ["v1.0.0-pkg-b"] },
+		]);
+		expect(results.map((r) => r.name)).toEqual(["pkg-a", "pkg-b"]);
+	});
+
+	test("skips projects with no CI-delegated steps", async () => {
+		let watchCount = 0;
+		const local = makeCiProject("all-local", (config) => {
+			config.steps.githubRelease = true;
+			config.steps.homebrew = true;
+		});
+
+		const results = await watchBatchCi([local], {
+			watchFn: async () => {
+				watchCount++;
+				return makeCiResult();
+			},
+			isGhAvailableFn: ghAvailable,
+		});
+
+		expect(watchCount).toBe(0);
+		expect(results).toEqual([]);
+	});
+
+	test("skips projects with watchCi disabled", async () => {
+		let watchCount = 0;
+		const optedOut = makeCiProject("opted-out", (config) => {
+			config.steps.watchCi = false;
+		});
+
+		await watchBatchCi([optedOut, makeCiProject("pkg-b")], {
+			watchFn: async () => {
+				watchCount++;
+				return makeCiResult();
+			},
+			isGhAvailableFn: ghAvailable,
+		});
+
+		expect(watchCount).toBe(1);
+	});
+
+	test("skips projects that pushed no tags", async () => {
+		let watchCount = 0;
+		const unpushed = makeCiProject("unpushed");
+		unpushed.pushedTags = [];
+
+		const results = await watchBatchCi([unpushed], {
+			watchFn: async () => {
+				watchCount++;
+				return makeCiResult();
+			},
+			isGhAvailableFn: ghAvailable,
+		});
+
+		expect(watchCount).toBe(0);
+		expect(results).toEqual([]);
+	});
+
+	test("skips projects with push disabled", async () => {
+		let watchCount = 0;
+		const noPush = makeCiProject("no-push", (config) => {
+			config.steps.push = false;
+		});
+
+		await watchBatchCi([noPush], {
+			watchFn: async () => {
+				watchCount++;
+				return makeCiResult();
+			},
+			isGhAvailableFn: ghAvailable,
+		});
+
+		expect(watchCount).toBe(0);
+	});
+
+	test("gh unavailable: watches nothing, returns empty", async () => {
+		let watchCount = 0;
+		const results = await watchBatchCi([makeCiProject("pkg-a")], {
+			watchFn: async () => {
+				watchCount++;
+				return makeCiResult();
+			},
+			isGhAvailableFn: async () => false,
+		});
+
+		expect(watchCount).toBe(0);
+		expect(results).toEqual([]);
+	});
+
+	test("returns per-project results so callers can fail the batch", async () => {
+		const failedRun = {
+			databaseId: 1,
+			workflowName: "release",
+			headBranch: "v1.0.0-pkg-bad",
+			status: "completed",
+			conclusion: "failure",
+			url: "https://example.com/run/1",
+			createdAt: "2026-01-01T00:00:00Z",
+			updatedAt: "2026-01-01T00:01:00Z",
+		};
+
+		const results = await watchBatchCi(
+			[makeCiProject("pkg-ok"), makeCiProject("pkg-bad")],
+			{
+				watchFn: async (config) =>
+					config.root.endsWith("pkg-bad")
+						? makeCiResult({ failed: [failedRun] })
+						: makeCiResult(),
+				isGhAvailableFn: ghAvailable,
+			},
+		);
+
+		expect(results.find((r) => r.name === "pkg-ok")?.result.failed).toEqual([]);
+		expect(results.find((r) => r.name === "pkg-bad")?.result.failed).toEqual([failedRun]);
 	});
 });
 
