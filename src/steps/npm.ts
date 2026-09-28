@@ -277,6 +277,14 @@ async function publishMultipleTargets(
 
 		p.log.warn(`${failed.length} target(s) failed: ${failed.map((t) => pc.yellow(displayNames.get(t) ?? t.cwd)).join(", ")}`);
 
+		// Every recovery here needs a fresh credential from a person. Retrying
+		// as-is would just fail the same way, so an unattended run stops and
+		// reports rather than looping or waiting for an answer.
+		if (isNonInteractive()) {
+			p.log.error("Cannot retry: a new OTP or web auth needs someone present. Use an npm automation token to publish unattended.");
+			break;
+		}
+
 		const action = await p.select({
 			message: "How would you like to proceed?",
 			options: [
