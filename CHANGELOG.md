@@ -9,6 +9,8 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-09-28
+
 ### Added
 
 - **Releases record themselves in your changelog** (`changelog-file.ts`). When a project has a `CHANGELOG.md`, shipx now writes the release into it and stages it with the release commit. Whatever sits under `## [Unreleased]` is promoted into a new `## [x.y.z] - date` section and `Unreleased` is emptied; when that section is empty, the release is written from the commits instead, mapping `feat` to Added, `fix` to Fixed, and `perf`/`refactor`/`revert` to Changed, with breaking changes leading their category. Housekeeping commits stay out. Link reference definitions are updated when the file already uses them. shipx never creates a changelog, only updates one that exists, and re-running after a failed release will not duplicate a section. Set `changelogFile: ""` to turn it off.
@@ -223,7 +225,8 @@ First release on npm.
 - **The package publishes as `@lacymorrow/shipx`**, after the unscoped name turned out to be taken.
 - **`package.json` is normalized before `npm publish`**, so scoped names work.
 
-[Unreleased]: https://github.com/lacymorrow/shipx/compare/v0.1.22...HEAD
+[Unreleased]: https://github.com/lacymorrow/shipx/compare/v0.1.23...HEAD
+[0.1.23]: https://github.com/lacymorrow/shipx/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/lacymorrow/shipx/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/lacymorrow/shipx/compare/v0.1.20...v0.1.21
 [0.1.16]: https://github.com/lacymorrow/shipx/compare/v0.1.15...v0.1.16
