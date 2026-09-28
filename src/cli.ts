@@ -57,6 +57,7 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--draft")}            Create GitHub release as draft (review before publishing)
   ${pc.yellow("--dry-run")}          Preview all steps without executing
   ${pc.yellow("--tag <name>")}       Publish with a custom dist-tag (e.g. next, canary, rc)
+  ${pc.yellow("--otp <code>")}       npm one-time password, for publishing without a prompt
   ${pc.yellow("--yes, -y")}          Skip confirmation prompts (implied in CI when a bump level is given)
   ${pc.yellow("--any-branch")}       Allow releasing from any branch, not just the release branch
   ${pc.yellow("--no-tests")}         Disable tests (overrides config steps.test=true)
@@ -182,6 +183,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const assumeYesFlag = argv.includes("--yes") || argv.includes("-y");
 	setAssumeYes(assumeYesFlag);
 	const customTag = parseFlag(argv, "--tag");
+	const otpFlag = parseFlag(argv, "--otp");
+	if (argv.includes("--otp") && !otpFlag) {
+		p.log.error("--otp requires a value (e.g. --otp 123456)");
+		process.exit(1);
+	}
 	if (argv.includes("--tag") && !customTag) {
 		p.log.error("--tag requires a value (e.g. --tag next)");
 		process.exit(1);
@@ -192,6 +198,10 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (customTag) {
 		const tagIdx = args.indexOf("--tag");
 		if (tagIdx !== -1) args.splice(tagIdx, 2);
+	}
+	if (otpFlag) {
+		const otpIdx = args.indexOf("--otp");
+		if (otpIdx !== -1) args.splice(otpIdx, 2);
 	}
 
 	const root = process.env.SHIPX_ROOT ?? process.cwd();
@@ -455,7 +465,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				p.log.info(`${pc.dim("[dry-run]")} Would publish to npm with access=${config.npm.targets[0].access}, tag=${distTag}`);
 			}
 		} else {
-			const published = await publishNpm(config, isBeta, { distTag: customTag });
+			const published = await publishNpm(config, isBeta, { distTag: customTag, otp: otpFlag ?? undefined });
 			if (!published && (config.steps.commit || config.steps.tag)) {
 				// Same reasoning as the partial-push rollback above: no one to ask
 				// means leave it alone rather than rewrite a remote on a guess.
