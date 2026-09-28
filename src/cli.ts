@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
+import { canAutoConfirmRelease, isNonInteractive, setAssumeYes } from "./interactive.ts";
 import { multiMain } from "./multi.ts";
 import { bumpCargoWorkspaces } from "./steps/cargo.ts";
 import { ciDelegatedSteps, isGhAvailable, watchCiRuns, type CiWatchResult } from "./steps/ci.ts";
@@ -56,6 +57,7 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--draft")}            Create GitHub release as draft (review before publishing)
   ${pc.yellow("--dry-run")}          Preview all steps without executing
   ${pc.yellow("--tag <name>")}       Publish with a custom dist-tag (e.g. next, canary, rc)
+  ${pc.yellow("--yes, -y")}          Skip confirmation prompts (implied in CI when a bump level is given)
   ${pc.yellow("--any-branch")}       Allow releasing from any branch, not just the release branch
   ${pc.yellow("--no-tests")}         Disable tests (overrides config steps.test=true)
   ${pc.yellow("--no-cleanup")}       Disable cleanup (overrides config steps.cleanup=true)
@@ -177,13 +179,15 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const noTests = argv.includes("--no-tests");
 	const noCleanup = argv.includes("--no-cleanup");
 	const noWatchCi = argv.includes("--no-watch-ci");
+	const assumeYesFlag = argv.includes("--yes") || argv.includes("-y");
+	setAssumeYes(assumeYesFlag);
 	const customTag = parseFlag(argv, "--tag");
 	if (argv.includes("--tag") && !customTag) {
 		p.log.error("--tag requires a value (e.g. --tag next)");
 		process.exit(1);
 	}
 
-	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup", "--no-watch-ci"];
+	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup", "--no-watch-ci", "--yes", "-y"];
 	let args = argv.filter((a) => !filteredFlags.includes(a));
 	if (customTag) {
 		const tagIdx = args.indexOf("--tag");
@@ -303,12 +307,19 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const distTag = customTag ?? (isBeta ? "beta" : "latest");
 	const distTagDisplay = distTag !== "latest" ? ` (dist-tag: ${pc.yellow(distTag)})` : "";
 
-	const proceed = await p.confirm({
-		message: `Release ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${gitTag})${distTagDisplay}?`,
-	});
-	if (p.isCancel(proceed) || !proceed) {
-		p.cancel("Release cancelled.");
-		process.exit(0);
+	// `shipx patch` in a workflow has already said what it wants. Asking again
+	// with nobody at the keyboard stops the release having done nothing, which
+	// is indistinguishable from a hang (#64). A bump named on the command line
+	// plus a non-interactive environment is enough to answer this one.
+	const releaseLine = `Release ${pc.cyan(baseVersion)} → ${pc.green(newVersion)} (${gitTag})${distTagDisplay}`;
+	if (canAutoConfirmRelease(Boolean(args[0]))) {
+		p.log.info(`${releaseLine} ${pc.dim("(auto-confirmed, non-interactive)")}`);
+	} else {
+		const proceed = await p.confirm({ message: `${releaseLine}?` });
+		if (p.isCancel(proceed) || !proceed) {
+			p.cancel("Release cancelled.");
+			process.exit(0);
+		}
 	}
 
 	let cargoStagePaths: string[] = [];
@@ -379,10 +390,16 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 				if (err instanceof PartialPushError) {
 					p.log.error(`Tag push partially failed: ${err.message}`);
 					p.log.warn(`Tags already pushed to remote: ${err.pushedTags.length ? err.pushedTags.map((t) => pc.green(t)).join(", ") : "none"}`);
-					const doRollback = await p.confirm({
-						message: "Roll back the release commit and tag(s)?",
-						initialValue: true,
-					});
+					// Rolling back rewrites history on a remote. With nobody to
+					// ask, leave the partial state alone and say so: a human can
+					// still roll back by hand, but an unattended run must not
+					// force-push on a guess.
+					const doRollback = isNonInteractive()
+						? (p.log.warn("Not rolling back: no one to confirm it. Roll back by hand if you want the tag gone."), false)
+						: await p.confirm({
+								message: "Roll back the release commit and tag(s)?",
+								initialValue: true,
+							});
 					if (!p.isCancel(doRollback) && doRollback) {
 						rollbackRelease(root, gitTag, extraTags, err.pushedTags, {
 							preReleaseSha,
@@ -440,10 +457,14 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		} else {
 			const published = await publishNpm(config, isBeta, { distTag: customTag });
 			if (!published && (config.steps.commit || config.steps.tag)) {
-				const doRollback = await p.confirm({
-					message: "npm publish failed. Roll back the release commit and tag?",
-					initialValue: true,
-				});
+				// Same reasoning as the partial-push rollback above: no one to ask
+				// means leave it alone rather than rewrite a remote on a guess.
+				const doRollback = isNonInteractive()
+					? (p.log.warn("npm publish failed. Not rolling back: no one to confirm it."), false)
+					: await p.confirm({
+							message: "npm publish failed. Roll back the release commit and tag?",
+							initialValue: true,
+						});
 				if (!p.isCancel(doRollback) && doRollback) {
 					rollbackRelease(root, gitTag, extraTags, pushedTags, { preReleaseSha, commitWasMade });
 					await runHook("postNpm", config.hooks.postNpm, hookCtx());
