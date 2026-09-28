@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { resolve } from "node:path";
 import type { NpmTarget, ResolvedConfig } from "../types.ts";
 import { errorText, exec, readJson, run, sleep } from "../utils.ts";
+import { isNonInteractive } from "../interactive.ts";
 
 async function isNpmLoggedIn(cwd?: string): Promise<string | false> {
 	try {
@@ -31,6 +32,19 @@ async function ensureNpmAuth(cwd?: string): Promise<boolean> {
 		return true;
 	}
 	spinner.stop(pc.yellow("Not logged in to npm"));
+
+	// `npm login` opens a browser and waits for a person. Offering it to an
+	// unattended run hangs it, and hangs it *late* — the tag is already pushed
+	// by this point, so the release is half done. Say what is wrong and let the
+	// caller fail instead (#64).
+	if (isNonInteractive()) {
+		p.log.error(
+			"Not logged in to npm, and nothing here can log in for you. " +
+				"Set a valid token in .npmrc or NODE_AUTH_TOKEN, or run `npm login` first.",
+		);
+		return false;
+	}
+
 	const action = await p.confirm({
 		message: "Log in to npm now?",
 		initialValue: true,
@@ -155,6 +169,11 @@ async function publishMultipleTargets(
 	opts?: { otp?: string; webAuth?: boolean; distTag?: string },
 ): Promise<boolean> {
 	if (!await ensureNpmAuth(targets[0].cwd)) {
+		// ensureNpmAuth has already explained itself in a non-interactive run.
+		if (isNonInteractive()) {
+			p.log.info("Skipping npm publish");
+			return false;
+		}
 		const skip = await p.confirm({
 			message: "Continue without npm login?",
 			initialValue: false,
@@ -170,7 +189,11 @@ async function publishMultipleTargets(
 	let otp = opts?.otp;
 	let webAuth = opts?.webAuth ?? false;
 
-	if (!otp && !webAuth) {
+	// A configured token is the only auth an unattended run can have, so take
+	// that branch rather than offering a browser or an OTP nobody can type.
+	if (!otp && !webAuth && isNonInteractive()) {
+		p.log.info("Publishing with the configured npm token (non-interactive).");
+	} else if (!otp && !webAuth) {
 		const authMethod = await p.select({
 			message: `Authentication for ${targets.length} packages`,
 			options: [
