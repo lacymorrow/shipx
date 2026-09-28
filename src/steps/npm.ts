@@ -98,10 +98,11 @@ function targetDisplayName(target: NpmTarget): string {
  * disaster (LAC-2055). Best-effort: warns but never fails the release,
  * since the registry can lag and offline environments shouldn't break.
  *
- * The registry CDN can take tens of seconds to surface a just-published
- * version, so we retry `npm view` with backoff before giving up.
+ * The registry CDN caches packuments for up to five minutes, so a
+ * just-published version can stay invisible well past a minute. Retry
+ * `npm view` with backoff for about three minutes before giving up.
  */
-const VERIFY_RETRY_DELAYS_MS = [0, 2000, 5000, 10000, 20000];
+const VERIFY_RETRY_DELAYS_MS = [0, 5000, 10000, 15000, 20000, 30000, 30000, 30000, 45000];
 
 export async function verifyPublishedArtifact(cwd: string): Promise<void> {
 	let localPkg: Record<string, unknown>;
@@ -119,18 +120,35 @@ export async function verifyPublishedArtifact(cwd: string): Promise<void> {
 	spinner.start(`Verifying ${label} on the registry`);
 
 	let raw: string | undefined;
-	for (const delay of VERIFY_RETRY_DELAYS_MS) {
+	let lastError = "";
+	const started = Date.now();
+	for (const [attempt, delay] of VERIFY_RETRY_DELAYS_MS.entries()) {
+		if (delay > 0) {
+			spinner.message(
+				`Waiting for ${label} to appear on the registry ` +
+					pc.dim(`(attempt ${attempt + 1}/${VERIFY_RETRY_DELAYS_MS.length}, ${Math.round((Date.now() - started) / 1000)}s)`),
+			);
+		}
 		await sleep(delay);
 		try {
-			raw = await run("npm", ["view", `${name}@${version}`, "bin", "main", "--json"], { cwd });
+			// --prefer-online skips npm's local packument cache, so a miss on an
+			// early attempt cannot be replayed on the later ones.
+			// Fetch the whole manifest. Asking for `bin main` makes npm unwrap the
+			// result to the bare value when only one of them exists, which reads
+			// as "no bin" for a bin-only package.
+			raw = await run("npm", ["view", `${name}@${version}`, "--json", "--prefer-online"], { cwd });
 			break;
-		} catch {
-			// Likely registry propagation lag — keep retrying.
+		} catch (err) {
+			// Usually registry propagation lag (E404). Keep the reason in case it isn't.
+			lastError = errorText(err);
 		}
 	}
 	if (raw === undefined) {
-		spinner.stop(pc.yellow(`Could not verify ${label} on the registry after retries`));
-		p.log.warn(`Manually verify with ${pc.green(`npm view ${name}@${version}`)} once propagation completes.`);
+		const waited = Math.round((Date.now() - started) / 1000);
+		spinner.stop(pc.yellow(`Could not verify ${label} on the registry after ${waited}s`));
+		const reason = lastError.split("\n").find((line) => /npm error/i.test(line)) ?? lastError.split("\n")[0];
+		if (reason) p.log.warn(pc.dim(reason.trim()));
+		p.log.warn(`The publish itself succeeded. Check with ${pc.green(`npm view ${name}@${version}`)} in a few minutes.`);
 		return;
 	}
 	spinner.stop(`Verified ${label} on the registry`);

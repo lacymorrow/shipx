@@ -9,6 +9,11 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ## [Unreleased]
 
+### Fixed
+
+- **Post-publish registry check waits long enough** (`steps/npm.ts`). The check gave up after about 37 seconds, but the npm CDN can keep serving a packument without the new version for several minutes, so real releases ended with `Could not verify <pkg>@<version> on the registry after retries`. It now retries for about three minutes with `--prefer-online`, shows attempt progress in the spinner, and on a real miss prints npm's own error and says the publish itself succeeded.
+- **No false "registry version has none" warning for bin-only packages** (`steps/npm.ts`). `npm view <pkg> bin main --json` returns the bare `bin` object when `main` is absent, so the check read it as a missing `bin`. It now fetches the full manifest.
+
 ## [0.1.24] - 2026-09-28
 
 ### Added
