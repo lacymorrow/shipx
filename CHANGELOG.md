@@ -9,6 +9,8 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ## [Unreleased]
 
+## [0.1.26] - 2026-09-28
+
 ### Fixed
 
 - **Post-publish registry check waits long enough** (`steps/npm.ts`). The check gave up after about 37 seconds, but the npm CDN can keep serving a packument without the new version for several minutes, so real releases ended with `Could not verify <pkg>@<version> on the registry after retries`. It now retries for about three minutes with `--prefer-online`, shows attempt progress in the spinner, and on a real miss prints npm's own error and says the publish itself succeeded.
@@ -240,7 +242,8 @@ First release on npm.
 - **The package publishes as `@lacymorrow/shipx`**, after the unscoped name turned out to be taken.
 - **`package.json` is normalized before `npm publish`**, so scoped names work.
 
-[Unreleased]: https://github.com/lacymorrow/shipx/compare/v0.1.24...HEAD
+[Unreleased]: https://github.com/lacymorrow/shipx/compare/v0.1.26...HEAD
+[0.1.26]: https://github.com/lacymorrow/shipx/compare/v0.1.25...v0.1.26
 [0.1.24]: https://github.com/lacymorrow/shipx/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/lacymorrow/shipx/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/lacymorrow/shipx/compare/v0.1.21...v0.1.22
