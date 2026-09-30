@@ -374,6 +374,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 	if (!options.length) {
 		p.log.info("No deployable projects after filtering archived repos.");
 		p.outro(pc.dim("Nothing to do."));
+		console.log();
 		return;
 	}
 
@@ -390,6 +391,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	if (p.isCancel(selected)) {
 		p.cancel("Release cancelled.");
+		console.log();
 		process.exit(0);
 	}
 
@@ -428,6 +430,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 		});
 		if (p.isCancel(proceed) || !proceed) {
 			p.cancel("Release cancelled.");
+			console.log();
 			process.exit(0);
 		}
 	}
@@ -444,6 +447,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 
 	if (p.isCancel(bumpMode)) {
 		p.cancel("Release cancelled.");
+		console.log();
 		process.exit(0);
 	}
 
@@ -665,6 +669,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 	if (!prepared.length) {
 		p.log.info("No projects to publish.");
 		p.outro(pc.dim("Nothing to do."));
+		console.log();
 		return;
 	}
 
@@ -822,4 +827,5 @@ export async function multiMain(argv: string[]): Promise<void> {
 		? pc.red(` — but ${failedRunCount} CI run(s) failed, see the run URL(s) above`)
 		: "";
 	p.outro(`${dryRunPrefix} ${pc.cyan(String(prepared.length))} project${prepared.length === 1 ? "" : "s"}${ciSuffix}:\n  ${summary}`);
+	console.log();
 }
