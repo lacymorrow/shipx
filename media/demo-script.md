@@ -7,7 +7,11 @@ DRI: Lacy. Only Lacy can publish, and only Lacy's voice sells it.
 
 ## The one sentence
 
-"Nine commands, every release, in the same order. I got tired of forgetting one."
+"Never half-ship a release."
+
+The worst release is half of one: the tag is pushed and `npm publish` died. shipx runs the
+whole chain in order and does not call it done until the registry has the new version.
+The 10 s teaser card (`shipx-card` in `~/repo/marketing-videos`) ends on the same line.
 
 ## Why this cut
 
@@ -31,9 +35,10 @@ DRI: Lacy. Only Lacy can publish, and only Lacy's voice sells it.
 ## Prep (do these before hitting record)
 
 1. Land a real change so the changelog step has real lines. Suggested: add the config
-   file below and tidy `CHANGELOG.md` (the Unreleased section still lists items that
-   shipped in 0.1.22). Commit with a conventional message. That commit is the changelog.
-2. Add `shipx.config.mts` to the repo. It is also the correct config for this repo.
+   file below. Commit with a conventional message. That commit is the changelog.
+2. Versions move. Run `npm view @lacymorrow/shipx version` the day you record and use
+   that as CURRENT below, with NEXT as its patch bump. (At writing: 0.1.27 → 0.1.28.)
+3. Add `shipx.config.mts` to the repo. It is also the correct config for this repo.
 
    ```ts
    import type { ShipConfig } from "@lacymorrow/shipx";
@@ -43,14 +48,14 @@ DRI: Lacy. Only Lacy can publish, and only Lacy's voice sells it.
    } satisfies ShipConfig;
    ```
 
-3. Confirm `npm config get auth-type` prints `web`. It does today. That means npm 2FA opens
+4. Confirm `npm config get auth-type` prints `web`. It does today. That means npm 2FA opens
    the browser, so no OTP is typed on camera and no code leaks into the recording.
-4. Confirm `gh auth status` is green and you are on `main` with a clean tree.
-5. Rehearse the exact run twice with `shipx --dry-run`. Same UI, same prompts, no side
+5. Confirm `gh auth status` is green and you are on `main` with a clean tree.
+6. Rehearse the exact run twice with `shipx --dry-run`. Same UI, same prompts, no side
    effects. This is how the take feels organic: you have done it twice already.
-6. Open two things and nothing else: the terminal, and a browser tab on
-   `npmjs.com/package/@lacymorrow/shipx` showing 0.1.22.
-7. Terminal: 1200 x 760-ish window, font 16 to 18, Catppuccin Mocha or whatever you use
+7. Open two things and nothing else: the terminal, and a browser tab on
+   `npmjs.com/package/@lacymorrow/shipx` showing CURRENT.
+8. Terminal: 1200 x 760-ish window, font 16 to 18, Catppuccin Mocha or whatever you use
    daily (the gif used Mocha, keep it consistent). Clear the prompt to something short.
    Turn off notifications. `clear` before record.
 
@@ -75,16 +80,16 @@ written, say what it means instead.
 
 | Time | On screen | What you say |
 |---|---|---|
-| 0:00 | Terminal, cursor blinking in `~/repo/shipx`. Nothing else. | "Every package release is the same nine commands in the same order. Bump, tag, changelog, push, gh release, npm publish. I kept forgetting one, usually the tag." |
-| 0:08 | Type `shipx`. Enter. | "So I wrote this. It's shipx, and I'm going to release it with itself." |
+| 0:00 | Terminal, cursor blinking in `~/repo/shipx`. Nothing else. | "The worst release I've had was half of one. Tag pushed, GitHub release up, and npm publish died. Then you're fixing it by hand." (Use your own real story if you have one.) |
+| 0:08 | Type `shipx`. Enter. | "So I wrote shipx. It runs the whole release in order and doesn't stop halfway. I'm going to release it with itself." |
 | 0:12 | Intro box `shipx — Release`. Preflight spinner. `Preflight OK`. `npm: authenticated as lacymorrow`. | "First it refuses to run if the tree is dirty or I'm on the wrong branch. That alone has saved me." |
-| 0:20 | Version prompt: `Current version: 0.1.22. Bump type?` patch / minor / major. Hover on patch. | "Patch, minor, major. It reads the version from package.json, no config." |
-| 0:25 | Enter. Confirm prompt `Release 0.1.22 → 0.1.23 (v0.1.23)?` | "One confirm." |
-| 0:28 | Enter. `Bumped package.json → 0.1.23`. Changelog box with the real commit lines. | Silence for two seconds. Then: "Changelog comes from the commits since the last tag. That's the GitHub release body." |
-| 0:36 | `Committed and tagged v0.1.23`. `Pushed to GitHub`. | "Commit, tag, push. Same as I'd type it. Each step is one shell command, nothing hidden." |
+| 0:20 | Version prompt: `Current version: CURRENT. Bump type?` patch / minor / major. Hover on patch. | "Patch, minor, major. It reads the version from package.json, no config." |
+| 0:25 | Enter. Confirm prompt `Release CURRENT → NEXT (vNEXT)?` | "One confirm." |
+| 0:28 | Enter. `Bumped package.json → NEXT`. Changelog box with the real commit lines. | Silence for two seconds. Then: "Changelog comes from the commits since the last tag. That's the GitHub release body." |
+| 0:36 | `Committed and tagged vNEXT`. `Pushed to GitHub`. | "Commit, tag, push. Same as I'd type it. Each step is one shell command, nothing hidden." |
 | 0:44 | `GitHub release created`. npm publish spinner. Browser flashes for web auth, approve. | "GitHub release. Then npm. Two-factor pops the browser, that's npm, not me." |
-| 0:54 | `Published to npm`. `Verified @lacymorrow/shipx@0.1.23 on the registry`. Outro line. | "And it checks the registry actually has it before it says done." |
-| 1:00 | Switch to the browser tab. Reload. Version shows 0.1.23. | "There it is." Beat. |
+| 0:54 | `Published to npm`. `Verified @lacymorrow/shipx@NEXT on the registry`. Outro line. | "And it checks the registry actually has it before it says done." |
+| 1:00 | Switch to the browser tab. Reload. Version shows NEXT. | "There it is." Beat. |
 | 1:05 | Back to terminal. Type `npx @lacymorrow/shipx`. Don't run it. Hold two seconds. | "npx @lacymorrow/shipx. Works on whatever is in your current directory. That's the whole thing." |
 | 1:12 | Cut to black. No end card. | (nothing) |
 
@@ -104,10 +109,11 @@ Total spoken words: about 150. If you are over 180, cut lines, not speed.
 
 ## Post copy (X)
 
-Every package release is the same nine commands. I kept forgetting the tag.
+The worst release is half of one: tag pushed, npm publish dead.
 
-So I wrote shipx: bump, changelog, tag, push, GitHub release, npm publish, in one prompt.
-Refuses to run on a dirty tree. Retries npm publish instead of dying. Cargo and Homebrew too.
+So I wrote shipx. It runs the whole chain in order: bump, changelog, tag, push, GitHub
+release, npm publish. It refuses a dirty tree, retries the publish instead of quitting,
+and checks the registry before it says done. Cargo and Homebrew too.
 
 Here it is releasing itself.
 
@@ -126,6 +132,8 @@ MIT. Prior art is sindresorhus/np, which is still great if you only ship to npm.
   the real repo with `--dry-run`, so the gif shows every step instead of three).
 - Save the raw recording to `media/` (not committed, add to .gitignore) so video 2
   can reuse the intro.
+- Optional teaser: post the 10 s `shipx-card` (`npm run render:shipx` in
+  `~/repo/marketing-videos`) a day before the full video.
 - Video 2 is `--multi`: five repos, one run, one browser auth. Open on `cd ~/repo && shipx --multi`.
 
 ## Demo test

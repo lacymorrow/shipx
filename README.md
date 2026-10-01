@@ -6,7 +6,7 @@
     </picture>
   </a>
 
-  <p><strong>Interactive release CLI</strong> ➔ bump, tag, publish, and ship — npm · Cargo · Homebrew · GitHub.</p>
+  <p><strong>Never half-ship a release.</strong><br>An interactive release CLI that bumps, tags, publishes, and ships to npm · Cargo · Homebrew · GitHub.</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@lacymorrow/shipx"><img alt="npm version" src="https://img.shields.io/npm/v/@lacymorrow/shipx?style=flat"></a>
@@ -26,7 +26,7 @@
 
 ## Why shipx
 
-Releasing a package is the same nine commands every time, in the same order, and you don't want to forget any of them or run them out of order.
+The worst release is half of one: the tag is pushed, the GitHub release is up, and `npm publish` died on a 2FA timeout. shipx runs the whole chain in order (bump, changelog, commit, tag, push, GitHub release, publish), stops before it starts if something is wrong, retries the publish instead of quitting, and checks the registry before it calls the release done.
 
 - **Beautiful interactive UI** built on [@clack/prompts](https://github.com/bombshell-dev/clack) — spinners, prompts, and confirms that you actually enjoy looking at.
 - **One config, every channel.** npm, GitHub releases, Cargo workspaces (Tauri-friendly), and Homebrew tap formula — all from a single `shipx.config.mts`.
