@@ -8,6 +8,7 @@ import type { ResolvedConfig } from "../types.ts";
 function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
 	return {
 		root,
+		configFile: "shipx.config.mts",
 		dryRun: false,
 		anyBranch: false,
 		tag: "",

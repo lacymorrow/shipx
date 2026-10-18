@@ -3,7 +3,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "./config.ts";
+import { configFileLabel, loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
 import { canAutoConfirmRelease, isNonInteractive, setAssumeYes } from "./interactive.ts";
 import { multiMain } from "./multi.ts";
@@ -219,7 +219,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		resolve(root, rel),
 	);
 	if (!pkgJsonPaths.length) {
-		p.log.error("No packageJsonPaths configured. Add them to shipx.config.ts or package.json.");
+		p.log.error(`No ${pc.cyan("packageJsonPaths")} configured. Add them to ${pc.cyan(configFileLabel(config))}.`);
 		process.exit(1);
 	}
 

@@ -3,7 +3,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { loadConfig, normalizeFlags } from "./config.ts";
+import { DEFAULT_CONFIG_FILE, configFileLabel, loadConfig, normalizeFlags } from "./config.ts";
 
 describe("normalizeFlags (M2)", () => {
 	test("undefined → empty array", () => {
@@ -197,4 +197,77 @@ console.log(mod.default.testScript);`;
 		expect(result.stdout.trim()).toBe("quiet");
 		},
 	);
+});
+
+// LAC-2069: error messages used to say "set X in your shipx config", leaving the
+// user to guess the filename. They now name the file the config came from, so
+// `configFile` has to survive every lookup branch.
+describe("configFile / configFileLabel", () => {
+	let root: string;
+
+	beforeEach(() => {
+		root = mkdtempSync(resolve(tmpdir(), "shipx-cfgfile-"));
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	test("no config file → empty configFile, label is the recommended filename", async () => {
+		writeFileSync(resolve(root, "package.json"), JSON.stringify({ name: "bare" }));
+		const cfg = await loadConfig(root);
+		expect(cfg.configFile).toBe("");
+		expect(configFileLabel(cfg)).toBe(DEFAULT_CONFIG_FILE);
+		expect(configFileLabel(cfg)).toBe("shipx.config.mts");
+	});
+
+	for (const file of ["shipx.config.mts", "shipx.config.ts", "shipx.config.mjs", "shipx.config.js"]) {
+		test(`${file} → configFile and label are that bare filename`, async () => {
+			writeFileSync(resolve(root, "package.json"), JSON.stringify({ name: "mod" }));
+			writeFileSync(resolve(root, file), "export default { testScript: \"t\" };\n");
+			const cfg = await loadConfig(root);
+			expect(cfg.configFile).toBe(file);
+			expect(configFileLabel(cfg)).toBe(file);
+		});
+	}
+
+	for (const file of [".shipxrc.json", ".shipxrc"]) {
+		test(`${file} → configFile and label are that bare filename`, async () => {
+			writeFileSync(resolve(root, "package.json"), JSON.stringify({ name: "rc" }));
+			writeFileSync(resolve(root, file), JSON.stringify({ testScript: "t" }));
+			const cfg = await loadConfig(root);
+			expect(cfg.configFile).toBe(file);
+			expect(configFileLabel(cfg)).toBe(file);
+		});
+	}
+
+	test("package.json shipx key → label points at the block, not the bare file", async () => {
+		writeFileSync(
+			resolve(root, "package.json"),
+			JSON.stringify({ name: "pkg", shipx: { testScript: "t" } }),
+		);
+		const cfg = await loadConfig(root);
+		expect(cfg.configFile).toBe("package.json");
+		expect(configFileLabel(cfg)).toBe('the "shipx" block of package.json');
+	});
+
+	// An empty `shipx` block still counts: the user declared where their config
+	// lives, so "add it to the shipx block of package.json" is the right pointer.
+	test("an empty shipx key in package.json still names package.json", async () => {
+		writeFileSync(resolve(root, "package.json"), JSON.stringify({ name: "pkg", shipx: {} }));
+		const cfg = await loadConfig(root);
+		expect(cfg.configFile).toBe("package.json");
+		expect(configFileLabel(cfg)).toBe('the "shipx" block of package.json');
+	});
+
+	test("a config file wins over the package.json shipx key", async () => {
+		writeFileSync(
+			resolve(root, "package.json"),
+			JSON.stringify({ name: "both", shipx: { testScript: "from-pkg" } }),
+		);
+		writeFileSync(resolve(root, ".shipxrc.json"), JSON.stringify({ testScript: "from-rc" }));
+		const cfg = await loadConfig(root);
+		expect(cfg.configFile).toBe(".shipxrc.json");
+		expect(cfg.testScript).toBe("from-rc");
+	});
 });

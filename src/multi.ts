@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
-import { loadConfig } from "./config.ts";
+import { configFileLabel, loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
 import { isUnpublishablePackage } from "./detect.ts";
 import { discoverProjects, type DiscoveredProject, type DiscoverResult } from "./discover.ts";
@@ -699,7 +699,7 @@ export async function multiMain(argv: string[]): Promise<void> {
 		const reasonStr = reasons.length ? ` (${reasons.join("; ")})` : "";
 		p.log.warn(
 			`${pc.yellow(pp.project.dirName)} was tagged and pushed but will NOT be published to npm${reasonStr}.\n` +
-			`  If this is unexpected, check ${pc.cyan("npm.cwd")} in your shipx config or the package.json on this branch.`,
+			`  If this is unexpected, check ${pc.cyan("npm.cwd")} in ${pc.cyan(configFileLabel(pp.config))} or the package.json on this branch.`,
 		);
 	}
 

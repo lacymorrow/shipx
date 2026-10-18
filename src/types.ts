@@ -188,6 +188,14 @@ export interface ResolvedGitConfig {
 
 export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks">> {
 	root: string;
+	/**
+	 * Where this config was actually loaded from, relative to `root` — e.g.
+	 * `shipx.config.mts` or `package.json`. Empty string when no config file
+	 * exists and bare defaults are in use. Error messages that tell the user to
+	 * set an option name the file from `configFileLabel()` rather than saying
+	 * "your shipx config", which leaves them guessing (LAC-2069).
+	 */
+	configFile: string;
 	dryRun: boolean;
 	anyBranch: boolean;
 	tag: string;
