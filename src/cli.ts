@@ -3,7 +3,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "./config.ts";
+import { configFileLabel, loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
 import { canAutoConfirmRelease, isNonInteractive, setAssumeYes } from "./interactive.ts";
 import { multiMain } from "./multi.ts";
@@ -219,7 +219,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		resolve(root, rel),
 	);
 	if (!pkgJsonPaths.length) {
-		p.log.error("No packageJsonPaths configured. Add them to shipx.config.ts or package.json.");
+		p.log.error(`No ${pc.cyan("packageJsonPaths")} configured. Add them to ${pc.cyan(configFileLabel(config))}.`);
 		process.exit(1);
 	}
 
@@ -328,6 +328,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		const proceed = await p.confirm({ message: `${releaseLine}?` });
 		if (p.isCancel(proceed) || !proceed) {
 			p.cancel("Release cancelled.");
+			console.log();
 			process.exit(0);
 		}
 	}
@@ -418,6 +419,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 						});
 						await runHook("postPush", config.hooks.postPush, hookCtx());
 						p.outro(pc.yellow("Release rolled back."));
+						console.log();
 						return;
 					}
 					p.log.warn("Continuing without rollback — orphan tags may exist on remote.");
@@ -479,6 +481,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 					rollbackRelease(root, gitTag, extraTags, pushedTags, { preReleaseSha, commitWasMade });
 					await runHook("postNpm", config.hooks.postNpm, hookCtx());
 					p.outro(pc.yellow("Release rolled back."));
+					console.log();
 					return;
 				}
 			}
@@ -529,15 +532,18 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (isDryRun) {
 		p.outro(`${pc.dim("[dry-run]")} Would release ${pc.green(gitTag)} — no changes were made`);
+		console.log();
 	} else if (ciWatch && ciWatch.failed.length) {
 		process.exitCode = 1;
 		p.outro(
 			pc.red(`✗ Released ${gitTag}, but ${ciWatch.failed.length} CI run(s) failed — see the run URL(s) above`),
 		);
+		console.log();
 	} else {
 		p.outro(
 			`${pc.green("✓")} Released ${pc.green(gitTag)} — ${pc.cyan(releaseUrl)}`,
 		);
+		console.log();
 	}
 }
 

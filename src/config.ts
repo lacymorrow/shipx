@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { detectPublishTarget } from "./detect.ts";
 import type { ResolvedConfig, ShipConfig } from "./types.ts";
 import { detectDefaultBranch, exec, readJson } from "./utils.ts";
@@ -16,7 +16,22 @@ export function normalizeFlags(input: string | string[] | undefined): string[] {
 	return input.split(/\s+/).filter(Boolean);
 }
 
-const DEFAULTS: Omit<ResolvedConfig, "root"> = {
+/** The config filename shipx recommends when a project has none yet. */
+export const DEFAULT_CONFIG_FILE = "shipx.config.mts";
+
+/**
+ * How to refer to this project's config in user-facing output, e.g.
+ * `set git.releaseBranch in shipx.config.mts`. Names the file the config was
+ * actually read from so the user knows where to go; falls back to the
+ * recommended filename when the project has no config file yet.
+ */
+export function configFileLabel(config: Pick<ResolvedConfig, "configFile">): string {
+	if (!config.configFile) return DEFAULT_CONFIG_FILE;
+	if (config.configFile === "package.json") return 'the "shipx" block of package.json';
+	return config.configFile;
+}
+
+const DEFAULTS: Omit<ResolvedConfig, "root" | "configFile"> = {
 	packageJsonPaths: [],
 	versionSource: "",
 	bumpFiles: [],
@@ -68,7 +83,10 @@ const DEFAULTS: Omit<ResolvedConfig, "root"> = {
 	hooks: {},
 };
 
-function mergeConfig(base: Omit<ResolvedConfig, "root">, user: ShipConfig): Omit<ResolvedConfig, "root"> {
+function mergeConfig(
+	base: Omit<ResolvedConfig, "root" | "configFile">,
+	user: ShipConfig,
+): Omit<ResolvedConfig, "root" | "configFile"> {
 	return {
 		packageJsonPaths: user.packageJsonPaths ?? base.packageJsonPaths,
 		versionSource: user.versionSource ?? base.versionSource,
@@ -134,6 +152,7 @@ export async function importConfigModule(path: string): Promise<Record<string, u
 
 export async function loadConfig(root: string): Promise<ResolvedConfig> {
 	let userConfig: ShipConfig = {};
+	let configFile = "";
 
 	const candidates = [
 		resolve(root, "shipx.config.mts"),
@@ -152,6 +171,7 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 			} else {
 				userConfig = JSON.parse(readFileSync(candidate, "utf-8"));
 			}
+			configFile = basename(candidate);
 			break;
 		}
 	}
@@ -161,6 +181,7 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 		const pkg = readJson(pkgPath);
 		if (pkg.shipx && typeof pkg.shipx === "object") {
 			userConfig = pkg.shipx as ShipConfig;
+			configFile = "package.json";
 		}
 	}
 
@@ -263,5 +284,5 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 		}
 	}
 
-	return { ...merged, root };
+	return { ...merged, root, configFile };
 }

@@ -2,6 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { configFileLabel } from "../config.ts";
 import { isUnpublishablePackage } from "../detect.ts";
 import type { ResolvedConfig } from "../types.ts";
 import { exec, isRepoArchived, readJson, run } from "../utils.ts";
@@ -42,7 +43,7 @@ function checkBranch(config: ResolvedConfig, isBeta: boolean): string {
 			`On branch '${pc.yellow(branch)}', not '${pc.green(config.git.releaseBranch)}'.\n` +
 			`  Switch to ${pc.green(config.git.releaseBranch)}, use ${pc.green("--beta")} for pre-releases, ` +
 			`${pc.green("--any-branch")} to release from any branch, ` +
-			`or set ${pc.cyan("git.releaseBranch")} in your shipx config.`,
+			`or set ${pc.cyan("git.releaseBranch")} in ${pc.cyan(configFileLabel(config))}.`,
 		);
 		process.exit(1);
 	}
@@ -239,7 +240,7 @@ function checkPackagePublishable(config: ResolvedConfig): void {
 			p.log.error(
 				`Package at ${pc.cyan(target.cwd)} is not publishable: ${reason}.\n` +
 				`  Either configure ${pc.green("npm.cwd")} / ${pc.green("npm.targets")} to point at the right subpackage,\n` +
-				`  or disable npm publish with ${pc.green("steps.npm: false")} in your shipx config.`,
+				`  or disable npm publish with ${pc.green("steps.npm: false")} in ${pc.cyan(configFileLabel(config))}.`,
 			);
 			process.exit(1);
 		}

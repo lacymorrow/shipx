@@ -26,6 +26,7 @@ function initRepo(): string {
 function makeConfig(root: string): ResolvedConfig {
 	return {
 		root,
+		configFile: "shipx.config.mts",
 		dryRun: false,
 		anyBranch: false,
 		tag: "",

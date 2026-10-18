@@ -42,6 +42,7 @@ describe("buildNpmAuthOptions", () => {
 function makeFakeConfig(name: string): ResolvedConfig {
 	return {
 		root: `/tmp/fake/${name}`,
+		configFile: "shipx.config.mts",
 		dryRun: false,
 		anyBranch: false,
 		tag: "v1.0.0",

@@ -9,6 +9,10 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ## [Unreleased]
 
+### Changed
+
+- **Errors name the config file instead of saying "your shipx config"** (`config.ts`, `steps/preflight.ts`, `multi.ts`, `cli.ts`). Messages that told you to set an option pointed at "your shipx config" without saying what that file is called. They now name the file the config was actually read from — `shipx.config.mts`, `.shipxrc.json`, or `the "shipx" block of package.json` — and fall back to `shipx.config.mts` when the project has no config file yet.
+
 ## [0.1.26] - 2026-09-28
 
 ### Fixed
