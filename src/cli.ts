@@ -455,6 +455,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		await runHook("postGithubRelease", config.hooks.postGithubRelease, hookCtx());
 	}
 
+	let npmPublishFailed = false;
 	if (config.steps.npm) {
 		await runHook("preNpm", config.hooks.preNpm, hookCtx());
 		if (isDryRun) {
@@ -468,6 +469,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			}
 		} else {
 			const published = await publishNpm(config, isBeta, { distTag: customTag, otp: otpFlag ?? undefined });
+			npmPublishFailed = !published;
 			if (!published && (config.steps.commit || config.steps.tag)) {
 				// Same reasoning as the partial-push rollback above: no one to ask
 				// means leave it alone rather than rewrite a remote on a guess.
@@ -530,8 +532,22 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		// no remote
 	}
 
+	// A publish that did not happen leaves the tag and the GitHub release out
+	// there without the package, and the only thing an unattended caller reads
+	// is the exit code. Interactively `publishNpm` returning false can also be a
+	// deliberate skip, and a person has already read the warning either way, so
+	// only the unattended run fails here (#69). Not a throw: the steps and hooks
+	// after npm still run, and the outro still says what landed.
+	const releaseIncomplete = npmPublishFailed && isNonInteractive();
+
 	if (isDryRun) {
 		p.outro(`${pc.dim("[dry-run]")} Would release ${pc.green(gitTag)} — no changes were made`);
+		console.log();
+	} else if (releaseIncomplete) {
+		process.exitCode = 1;
+		p.outro(
+			pc.red(`✗ Half-shipped ${gitTag}: the npm publish failed, so the package is not on the registry`),
+		);
 		console.log();
 	} else if (ciWatch && ciWatch.failed.length) {
 		process.exitCode = 1;

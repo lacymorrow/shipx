@@ -155,7 +155,7 @@ export default {
 | `steps.tag` | `boolean` | `true` | Create git tag (plus any `extraTags`) |
 | `steps.push` | `boolean` | `true` | Push commit + tag(s) to `origin` |
 | `steps.githubRelease` | `boolean` | `true` | Create GitHub release via `gh` CLI |
-| `steps.npm` | `boolean` | `true` | Publish to npm (with interactive retry) |
+| `steps.npm` | `boolean` | `true` | Publish to npm. Interactive runs get a retry menu; an unattended run reports the failure and exits non-zero, leaving the tag in place |
 | `steps.homebrew` | `boolean` | `true` | Update Homebrew formula SHA + URL |
 | `steps.watchCi` | `boolean` | `true` | When `githubRelease` or `homebrew` is delegated to CI (set to `false`), watch the runs the pushed tag(s) triggered and exit non-zero if one fails. Needs `gh`. Disable with `--no-watch-ci` |
 | `git.releaseBranch` | `string` | `"main"` | Branch required for stable releases |

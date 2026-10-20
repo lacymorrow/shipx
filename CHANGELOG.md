@@ -9,6 +9,10 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed npm publish now fails the run** (`cli.ts`, `steps/npm.ts`). An unattended release whose publish was rejected still exited 0, so CI went green on a release where the tag and the GitHub release landed and the package did not. Two halves: the single-target publish path opened its interactive retry menu with nobody there to answer it, which left the process at a prompt with code 0, and the exit code was never set when the publish failed. A non-interactive run now says what did not ship and exits 1. The tag and the GitHub release stay in place — rolling back a pushed tag with no one to confirm it is worse — and interactive runs are unchanged.
+
 ### Changed
 
 - **Errors name the config file instead of saying "your shipx config"** (`config.ts`, `steps/preflight.ts`, `multi.ts`, `cli.ts`). Messages that told you to set an option pointed at "your shipx config" without saying what that file is called. They now name the file the config was actually read from — `shipx.config.mts`, `.shipxrc.json`, or `the "shipx" block of package.json` — and fall back to `shipx.config.mts` when the project has no config file yet.
