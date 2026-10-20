@@ -359,6 +359,11 @@ export async function publishNpm(
 	const { cwd, access } = config.npm.targets[0];
 
 	if (!await ensureNpmAuth(cwd)) {
+		// ensureNpmAuth has already explained itself in a non-interactive run.
+		if (isNonInteractive()) {
+			p.log.info("Skipping npm publish");
+			return false;
+		}
 		const skip = await p.confirm({
 			message: "Continue without npm login?",
 			initialValue: false,
@@ -401,6 +406,16 @@ export async function publishNpm(
 				p.log.warn("This looks like an authentication error — try logging in first");
 			}
 		}
+	}
+
+	// Every recovery below needs a fresh credential from a person, the same as
+	// in the multi-target loop above. Offering the menu unattended is worse than
+	// failing: with stdin at EOF the prompt resolves to nothing, the awaited
+	// promise never settles, and the process leaves with code 0 having said only
+	// that it wanted to ask something (#69).
+	if (isNonInteractive()) {
+		p.log.error("Cannot retry: a new OTP or web auth needs someone present. Use an npm automation token to publish unattended.");
+		return false;
 	}
 
 	while (true) {
