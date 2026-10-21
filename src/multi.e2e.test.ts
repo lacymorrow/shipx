@@ -122,11 +122,12 @@ function stripAnsi(text: string): string {
 	return text.replace(ANSI, "");
 }
 
-/** The three prompts an unattended batch must never open. */
+/** The prompts an unattended batch must never open. */
 const PROMPTS = [
 	"Select projects to release",
 	"Version bump strategy",
 	"npm authentication method",
+	"Beta bump?",
 ];
 
 function expectNoPrompts(output: string): void {
@@ -181,6 +182,26 @@ describe("shipx --multi, unattended (#70)", () => {
 			expect(result.status).toBe(0);
 			expectNoPrompts(result.output);
 			expect(result.output).toContain("v1.0.1");
+		},
+		SPAWN_TIMEOUT_MS,
+	);
+
+	// `--beta` is documented for batch mode, and a project already on a beta
+	// reaches a select that a named level does not answer.
+	test(
+		"--multi <bump> --beta --yes bumps an in-flight beta without prompting",
+		() => {
+			const parent = makeParentDir();
+			makeRepo(parent, "proj-a", {
+				"package.json": { name: "proj-a", version: "1.0.0-beta.3", private: true },
+			});
+
+			const result = runCli(["--multi", "patch", "--beta", "--dry-run", "--yes"], { cwd: parent });
+
+			expect(result.signal).toBeNull();
+			expect(result.status).toBe(0);
+			expectNoPrompts(result.output);
+			expect(result.output).toContain("v1.0.0-beta.4");
 		},
 		SPAWN_TIMEOUT_MS,
 	);
