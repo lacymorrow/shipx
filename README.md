@@ -237,6 +237,14 @@ The flow:
 
 Combine with `--beta` for beta batch releases: `shipx --multi --beta`.
 
+**Unattended batches.** In CI, or with `--yes`, name the bump level on the command line:
+
+```bash
+shipx --multi patch --yes
+```
+
+That releases every project with unreleased commits, bumping each from its own current version, and opens no prompt. There is deliberately no default level: picking one would release a whole directory of projects on a guess, so `shipx --multi --yes` with no level exits 1 and says what is missing. Projects not on their release branch are skipped unless you pass `--any-branch`. The run exits non-zero if a project fails to release, an npm publish is rejected, or a delegated CI run fails.
+
 ### Beta release
 
 ```bash

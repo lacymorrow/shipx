@@ -2,10 +2,195 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { buildNpmAuthOptions, batchPublishNpm, reevaluateProjectPublishability, watchBatchCi, type BatchCiProject } from "./multi.ts";
+import {
+	buildNpmAuthOptions,
+	batchPublishNpm,
+	positionalArgs,
+	reevaluateProjectPublishability,
+	resolveBumpMode,
+	summarizeBatch,
+	watchBatchCi,
+	type BatchCiProject,
+	type BatchOutcome,
+} from "./multi.ts";
 import type { DiscoveredProject } from "./discover.ts";
 import type { CiWatchResult } from "./steps/ci.ts";
 import type { ResolvedConfig } from "./types.ts";
+
+// ── Non-interactive batch mode (#70) ───────────────────────────────────
+
+describe("positionalArgs", () => {
+	test("keeps the bump level and drops the flags around it", () => {
+		expect(positionalArgs(["--dry-run", "patch", "--yes"])).toEqual(["patch"]);
+	});
+
+	test("drops a flag's value as well as the flag", () => {
+		expect(positionalArgs(["--tag", "next", "minor"])).toEqual(["minor"]);
+		expect(positionalArgs(["--otp", "123456", "major"])).toEqual(["major"]);
+	});
+
+	test("no positionals is empty, not [undefined]", () => {
+		expect(positionalArgs(["--dry-run", "--yes", "-y"])).toEqual([]);
+	});
+});
+
+describe("resolveBumpMode", () => {
+	test("a named level is taken from the command line", () => {
+		expect(resolveBumpMode("patch", true)).toEqual({ kind: "named", mode: "patch" });
+		expect(resolveBumpMode("minor", false)).toEqual({ kind: "named", mode: "minor" });
+		expect(resolveBumpMode("major", true)).toEqual({ kind: "named", mode: "major" });
+	});
+
+	test("interactively, no level means ask", () => {
+		expect(resolveBumpMode(undefined, false)).toEqual({ kind: "ask" });
+	});
+
+	// The reported bug: `shipx --multi --yes` opened the strategy select with
+	// nothing on stdin and stalled having done nothing. There is no safe
+	// default for a whole directory of projects, so it has to say so instead.
+	test("unattended with no level is an error, not a prompt", () => {
+		const resolution = resolveBumpMode(undefined, true);
+		expect(resolution.kind).toBe("error");
+		expect(resolution.kind === "error" && resolution.message).toContain("--multi patch");
+	});
+
+	test("an explicit version is refused rather than silently ignored", () => {
+		const resolution = resolveBumpMode("2.0.0", false);
+		expect(resolution.kind).toBe("error");
+		expect(resolution.kind === "error" && resolution.message).toContain("2.0.0");
+	});
+
+	test("an unknown level is refused", () => {
+		const resolution = resolveBumpMode("pacth", false);
+		expect(resolution.kind).toBe("error");
+		expect(resolution.kind === "error" && resolution.message).toContain("pacth");
+	});
+});
+
+// ── Batch exit code and summary (#74) ──────────────────────────────────
+
+function makeOutcome(overrides?: Partial<BatchOutcome>): BatchOutcome {
+	return {
+		prepared: [],
+		prepareFailures: [],
+		publishResults: [],
+		publishSkipped: [],
+		ci: [],
+		nonInteractive: true,
+		...overrides,
+	};
+}
+
+function statusOf(verdict: ReturnType<typeof summarizeBatch>, name: string) {
+	return verdict.statuses.find((s) => s.name === name)?.status;
+}
+
+describe("summarizeBatch", () => {
+	test("everything landed: no failure, no problems", () => {
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }],
+			publishResults: [{ name: "pkg-a", success: true }],
+		}));
+		expect(verdict.failed).toBe(false);
+		expect(verdict.problems).toEqual([]);
+		expect(statusOf(verdict, "pkg-a")).toBe("released");
+	});
+
+	// The reported bug: phase 2 collected every publish result, printed
+	// "Skipped/failed: <names>", then threw the list away. A batch where every
+	// publish was rejected exited 0 with a ✓ per project.
+	test("an unattended batch whose publishes all failed exits non-zero", () => {
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }, { name: "pkg-b", tag: "v2.1.0" }],
+			publishResults: [
+				{ name: "pkg-a", success: false },
+				{ name: "pkg-b", success: false },
+			],
+		}));
+		expect(verdict.failed).toBe(true);
+		expect(statusOf(verdict, "pkg-a")).toBe("publish-failed");
+		expect(statusOf(verdict, "pkg-b")).toBe("publish-failed");
+	});
+
+	test("only the project whose publish failed is marked, so the summary says which shipped a tag with no package", () => {
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-ok", tag: "v1.0.1" }, { name: "pkg-bad", tag: "v2.1.0" }],
+			publishResults: [
+				{ name: "pkg-ok", success: true },
+				{ name: "pkg-bad", success: false },
+			],
+		}));
+		expect(statusOf(verdict, "pkg-ok")).toBe("released");
+		expect(statusOf(verdict, "pkg-bad")).toBe("publish-failed");
+		expect(verdict.problems).toEqual(["1 npm publish failed"]);
+	});
+
+	test("interactively a failed publish is reported but does not fail the run", () => {
+		// Mirrors the single-project rule (#69): with someone watching,
+		// publishNpm returning false can be a deliberate skip, and they have
+		// already read the warning.
+		const verdict = summarizeBatch(makeOutcome({
+			nonInteractive: false,
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }],
+			publishResults: [{ name: "pkg-a", success: false }],
+		}));
+		expect(verdict.failed).toBe(false);
+		expect(statusOf(verdict, "pkg-a")).toBe("publish-failed");
+		expect(verdict.problems).toEqual(["1 npm publish failed"]);
+	});
+
+	test("a cancelled auth prompt marks every package as tagged without a package", () => {
+		const verdict = summarizeBatch(makeOutcome({
+			nonInteractive: false,
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }],
+			publishSkipped: ["pkg-a"],
+		}));
+		expect(statusOf(verdict, "pkg-a")).toBe("publish-skipped");
+		expect(verdict.problems).toEqual(["1 npm publish skipped"]);
+	});
+
+	test("a prepare that threw always fails the run, attended or not", () => {
+		for (const nonInteractive of [true, false]) {
+			const verdict = summarizeBatch(makeOutcome({
+				nonInteractive,
+				prepareFailures: ["pkg-broken"],
+			}));
+			expect(verdict.failed).toBe(true);
+			expect(statusOf(verdict, "pkg-broken")).toBe("prepare-failed");
+		}
+	});
+
+	test("a project that failed before pushing still appears in the summary", () => {
+		// It never reaches `prepared`, so it used to vanish from the summary.
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-ok", tag: "v1.0.1" }],
+			prepareFailures: ["pkg-broken"],
+		}));
+		expect(verdict.statuses.map((s) => s.name)).toEqual(["pkg-ok", "pkg-broken"]);
+		expect(verdict.statuses.find((s) => s.name === "pkg-broken")?.tag).toBe("");
+	});
+
+	test("a failed CI run still fails the run", () => {
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }],
+			publishResults: [{ name: "pkg-a", success: true }],
+			ci: [{ name: "pkg-a", result: makeCiResult({ failed: [makeCiRun()] }) }],
+		}));
+		expect(verdict.failed).toBe(true);
+		expect(statusOf(verdict, "pkg-a")).toBe("ci-failed");
+	});
+
+	test("a failed publish outranks a pending CI run in the summary line", () => {
+		// The publish is the thing that did not happen; CI being mid-flight is
+		// not the headline.
+		const verdict = summarizeBatch(makeOutcome({
+			prepared: [{ name: "pkg-a", tag: "v1.0.1" }],
+			publishResults: [{ name: "pkg-a", success: false }],
+			ci: [{ name: "pkg-a", result: makeCiResult({ pending: [makeCiRun()] }) }],
+		}));
+		expect(statusOf(verdict, "pkg-a")).toBe("publish-failed");
+	});
+});
 
 // ── Auth option selection ──────────────────────────────────────────────
 
@@ -174,6 +359,19 @@ describe("batchPublishNpm — OTP per-package", () => {
 
 function makeCiResult(overrides?: Partial<CiWatchResult>): CiWatchResult {
 	return { succeeded: [], failed: [], pending: [], missingTags: [], ...overrides };
+}
+
+function makeCiRun(): CiWatchResult["failed"][number] {
+	return {
+		databaseId: 1,
+		workflowName: "release",
+		headBranch: "v1.0.1",
+		status: "completed",
+		conclusion: "failure",
+		url: "https://example.com/run/1",
+		createdAt: "2026-01-01T00:00:00Z",
+		updatedAt: "2026-01-01T00:01:00Z",
+	};
 }
 
 function makeCiProject(

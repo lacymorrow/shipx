@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { isNonInteractive } from "../interactive.ts";
 
 export type BumpType = "patch" | "minor" | "major";
 
@@ -72,6 +73,22 @@ async function pickBetaVersion(currentVersion: string, argVersion: string | unde
 	const isAlreadyBeta = /-beta\.\d+$/.test(currentVersion);
 
 	if (isAlreadyBeta) {
+		// `--multi <level> --beta --yes` reaches this select: the named level is
+		// deliberately not honoured here (a beta already in flight has four
+		// sensible next versions, not one), so a named bump does not answer it
+		// the way it answers the non-beta path above. Unattended, take the
+		// option the prompt itself pre-selects — the one pressing Enter gives
+		// you — rather than render it at a closed stdin and release nothing
+		// while exiting 0 (#70). Incrementing the counter is also the only
+		// answer that cannot collide with or skip a published version.
+		if (isNonInteractive()) {
+			const next = bumpBeta(currentVersion, "patch");
+			p.log.info(
+				`Beta bump: ${pc.cyan(currentVersion)} → ${pc.green(next)} ${pc.dim("(next beta, non-interactive)")}`,
+			);
+			return next;
+		}
+
 		const selected = await p.select({
 			message: `Current version: ${pc.cyan(currentVersion)}. Beta bump?`,
 			options: [
