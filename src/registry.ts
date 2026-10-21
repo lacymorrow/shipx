@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { errorText, exec } from "./utils.ts";
+import { isNonInteractive } from "./interactive.ts";
 
 export type NpmRegistryResult =
 	| { kind: "ok"; version: string }
@@ -100,6 +101,9 @@ function splitVersion(v: string): [string, string] {
  *   - the package is unpublished (silent — first release),
  *   - the registry is unreachable (loud warning — could collide on publish),
  *   - the registry version is equal to or below local.
+ *
+ * Unattended it takes the registry version without asking: that is the only
+ * answer that can publish, and the prompt would otherwise stall the run.
  */
 export async function reconcileRegistryVersion(
 	pkgName: string,
@@ -140,6 +144,17 @@ export async function reconcileRegistryVersion(
 		`${pc.cyan(displayName)} on npm is ${pc.green(registryVersion)} but local is ${pc.yellow(localVersion)}.\n` +
 		`  Bumping from ${localVersion} would publish a version below the registry and be rejected by npm.`,
 	);
+
+	// The recommended answer is the only one that can publish at all, and this
+	// prompt sits on the unattended path for both single and batch mode.
+	// Asking it with nobody at the keyboard stalls the release before anything
+	// has happened, which is the failure #70 is about.
+	if (isNonInteractive()) {
+		p.log.info(
+			`Bumping from the registry version ${pc.green(registryVersion)} ${pc.dim("(non-interactive)")}`,
+		);
+		return registryVersion;
+	}
 
 	const choice = await p.select({
 		message: "Use which version as the base for bumping?",

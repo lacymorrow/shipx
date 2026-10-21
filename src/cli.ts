@@ -64,6 +64,7 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--no-cleanup")}       Disable cleanup (overrides config steps.cleanup=true)
   ${pc.yellow("--no-watch-ci")}      Don't watch tag-triggered CI runs after the push
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
+                     Unattended, name the bump: ${pc.green("shipx --multi patch --yes")}
   ${pc.yellow("--help, -h")}         Show this help message
   ${pc.yellow("--version, -v")}      Print version
 
@@ -169,6 +170,13 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		return;
 	}
 
+	// Read before the --multi hand-off, not after. `multiMain` reads the same
+	// assumeYes() state, so setting it below the branch left batch mode with
+	// `forcedYes` false no matter what was typed, and no non-interactive path
+	// at all (#70).
+	const assumeYesFlag = argv.includes("--yes") || argv.includes("-y");
+	setAssumeYes(assumeYesFlag);
+
 	if (argv.includes("--multi")) {
 		return multiMain(argv.filter((a) => a !== "--multi"));
 	}
@@ -180,8 +188,6 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const noTests = argv.includes("--no-tests");
 	const noCleanup = argv.includes("--no-cleanup");
 	const noWatchCi = argv.includes("--no-watch-ci");
-	const assumeYesFlag = argv.includes("--yes") || argv.includes("-y");
-	setAssumeYes(assumeYesFlag);
 	const customTag = parseFlag(argv, "--tag");
 	const otpFlag = parseFlag(argv, "--otp");
 	if (argv.includes("--otp") && !otpFlag) {
