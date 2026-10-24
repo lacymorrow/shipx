@@ -37,11 +37,11 @@ The 10 s teaser card (`shipx-card` in `~/repo/marketing-videos`) ends on the sam
 1. Real commits for the changelog: done. Five fixes and docs have landed since v0.1.27.
 2. Versions move. Run `npm view @lacymorrow/shipx version` the day you record and use
    that as CURRENT below, with NEXT as its patch bump. (At writing: 0.1.27 → 0.1.28.)
-3. `shipx.config.mts`: done (Homebrew off). The file below is what landed.
+3. `shipx.config.mts`: done (Homebrew and the CI watch off; with Homebrew off, shipx otherwise waits ~15 s for a tag-triggered CI run this repo does not have). The file below is what landed.
 
    ```ts
    export default {
-     steps: { homebrew: false },
+     steps: { homebrew: false, watchCi: false },
    };
    ```
 
