@@ -1,0 +1,34 @@
+[B01 0:10]
+The worst release I've had was half of one. Tag pushed, GitHub release up, and npm publish died. Then you're fixing it by hand.
+
+[B02 0:06]
+So I wrote shipx. It runs the whole release and doesn't stop halfway. Watch it release itself.
+
+[B03 0:08]
+First it refuses to run if the tree is dirty or I'm on the wrong branch. That alone has saved me.
+
+[B04 0:05]
+Patch, minor, major. It reads the version from package.json. No config.
+
+[B05 0:03]
+One confirm.
+
+[silence 0:02]
+
+[B06 0:06]
+Changelog comes from the commits since the last tag. That's the GitHub release body.
+
+[B07 0:08]
+Commit, tag, push. Same as I'd type it. Each step is one shell command, nothing hidden.
+
+[B08 0:10]
+GitHub release. Then npm. Two-factor pops the browser. That's npm, not me.
+
+[B09 0:06]
+And it checks the registry actually has it before it says done.
+
+[B10 0:05]
+There it is.
+
+[B11 0:07]
+npx at lacymorrow slash shipx. Works on whatever is in your current directory. That's the whole thing.
