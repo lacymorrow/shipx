@@ -34,18 +34,15 @@ The 10 s teaser card (`shipx-card` in `~/repo/marketing-videos`) ends on the sam
 
 ## Prep (do these before hitting record)
 
-1. Land a real change so the changelog step has real lines. Suggested: add the config
-   file below. Commit with a conventional message. That commit is the changelog.
+1. Real commits for the changelog: done. Five fixes and docs have landed since v0.1.27.
 2. Versions move. Run `npm view @lacymorrow/shipx version` the day you record and use
    that as CURRENT below, with NEXT as its patch bump. (At writing: 0.1.27 → 0.1.28.)
-3. Add `shipx.config.mts` to the repo. It is also the correct config for this repo.
+3. `shipx.config.mts`: done (Homebrew off). The file below is what landed.
 
    ```ts
-   import type { ShipConfig } from "@lacymorrow/shipx";
-
    export default {
      steps: { homebrew: false },
-   } satisfies ShipConfig;
+   };
    ```
 
 4. Confirm `npm config get auth-type` prints `web`. It does today. That means npm 2FA opens
@@ -81,7 +78,7 @@ written, say what it means instead.
 | Time | On screen | What you say |
 |---|---|---|
 | 0:00 | Terminal, cursor blinking in `~/repo/shipx`. Nothing else. | "The worst release I've had was half of one. Tag pushed, GitHub release up, and npm publish died. Then you're fixing it by hand." (Use your own real story if you have one.) |
-| 0:08 | Type `shipx`. Enter. | "So I wrote shipx. It runs the whole release in order and doesn't stop halfway. I'm going to release it with itself." |
+| 0:08 | Type `shipx`. Enter. | "So I wrote shipx. It runs the whole release and doesn't stop halfway. Watch it release itself." |
 | 0:12 | Intro box `shipx — Release`. Preflight spinner. `Preflight OK`. `npm: authenticated as lacymorrow`. | "First it refuses to run if the tree is dirty or I'm on the wrong branch. That alone has saved me." |
 | 0:20 | Version prompt: `Current version: CURRENT. Bump type?` patch / minor / major. Hover on patch. | "Patch, minor, major. It reads the version from package.json, no config." |
 | 0:25 | Enter. Confirm prompt `Release CURRENT → NEXT (vNEXT)?` | "One confirm." |
