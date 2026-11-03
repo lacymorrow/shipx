@@ -50,7 +50,7 @@ function makeConfig(root: string): ResolvedConfig {
 		github: { draft: false, assets: [] },
 		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
-		xcode: { enabled: false, versionFile: "", buildNumber: "commitCount", buildNumberOffset: 0, generate: true, scheme: "", platforms: ["ios"], exportOptionsPlist: "", ascKey: null, upload: true },
+		xcode: { enabled: false, versionFile: "", buildNumber: "commitCount", buildNumberOffset: 0, generate: true, scheme: "", platforms: ["ios"], unsignedArchive: [], exportOptionsPlist: "", ascKey: null, upload: true },
 		hooks: {},
 	};
 }

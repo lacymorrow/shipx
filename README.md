@@ -254,6 +254,7 @@ shipx --dry-run           # print the exact xcodebuild commands
 | `xcode.generate` | `boolean` | `true` | Run `xcodegen generate` when `project.yml` exists |
 | `xcode.scheme` | `string` | XcodeGen `name:` or the `.xcodeproj` name | Scheme to archive |
 | `xcode.platforms` | `("ios" \| "macos" \| "tvos" \| "visionos")[]` | `["ios"]` | Platforms to archive, mapped to `generic/platform=iOS`, `generic/platform=macOS` and so on |
+| `xcode.unsignedArchive` | `string[]` | `[]` | Platforms to archive without signing, for example `["tvos", "visionos"]` when the team has no device registered for them. The export step signs them with the App Store Connect key |
 | `xcode.exportOptionsPlist` | `string` | generated | Your own export options plist. shipx sets its `destination` to `upload` or `export` on a copy |
 | `xcode.ascKey` | `{ keyId, issuerId, keyPath }` | env | App Store Connect API key. Falls back to `ASC_KEY_ID` and `ASC_ISSUER_ID`, then `~/.appstoreconnect/env`. `keyPath` defaults to `~/.appstoreconnect/private_keys/AuthKey_<keyId>.p8` |
 | `xcode.upload` | `boolean` | `true` | Upload after exporting. `--no-upload` overrides it |
