@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bumpVersionFiles, getFilesToStage } from "./bump.ts";
@@ -118,6 +119,25 @@ describe("bumpVersionFiles for an Xcode project", () => {
 			expect(out).toContain('MARKETING_VERSION: "1.1.0"');
 			expect(out).toContain('CURRENT_PROJECT_VERSION: "5"');
 			expect(getFilesToStage(config)).toEqual(["project.yml"]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("getFilesToStage for a tracked .xcodeproj", () => {
+	test("stages the tracked project.pbxproj, and not an untracked one", () => {
+		const root = mkdtempSync(join(tmpdir(), "shipx-stage-xcode-"));
+		try {
+			execFileSync("git", ["init", "-q"], { cwd: root });
+			mkdirSync(join(root, "A.xcodeproj"));
+			mkdirSync(join(root, "B.xcodeproj"));
+			writeFileSync(join(root, "A.xcodeproj/project.pbxproj"), "x");
+			writeFileSync(join(root, "B.xcodeproj/project.pbxproj"), "x");
+			execFileSync("git", ["add", "A.xcodeproj/project.pbxproj"], { cwd: root });
+			const config = makeConfig(root);
+			config.xcode = { ...config.xcode, enabled: true, versionFile: "project.yml" };
+			expect(getFilesToStage(config)).toEqual(["project.yml", "A.xcodeproj/project.pbxproj"]);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
