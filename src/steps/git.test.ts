@@ -39,7 +39,7 @@ function makeConfig(root: string): ResolvedConfig {
 		steps: {
 			preflight: true, test: false, cleanup: false, changelog: true,
 			bumpVersion: true, commit: true, tag: true, push: true,
-			githubRelease: true, npm: true, homebrew: true, watchCi: true,
+			githubRelease: true, npm: true, homebrew: true, watchCi: true, xcode: true,
 		},
 		git: {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],
@@ -50,6 +50,7 @@ function makeConfig(root: string): ResolvedConfig {
 		github: { draft: false, assets: [] },
 		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		xcode: { enabled: false, versionFile: "", buildNumber: "commitCount", buildNumberOffset: 0, generate: true, scheme: "", platforms: ["ios"], exportOptionsPlist: "", ascKey: null, upload: true },
 		hooks: {},
 	};
 }

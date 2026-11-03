@@ -157,6 +157,7 @@ export default {
 | `steps.githubRelease` | `boolean` | `true` | Create GitHub release via `gh` CLI |
 | `steps.npm` | `boolean` | `true` | Publish to npm. Interactive runs get a retry menu; an unattended run reports the failure and exits non-zero, leaving the tag in place |
 | `steps.homebrew` | `boolean` | `true` | Update Homebrew formula SHA + URL |
+| `steps.xcode` | `boolean` | `true` | Archive, export and upload an Xcode project. Does nothing for other projects. See [Apple apps](#apple-apps-xcode) |
 | `steps.watchCi` | `boolean` | `true` | When `githubRelease` or `homebrew` is delegated to CI (set to `false`), watch the runs the pushed tag(s) triggered and exit non-zero if one fails. Needs `gh`. Disable with `--no-watch-ci` |
 | `git.releaseBranch` | `string` | `"main"` | Branch required for stable releases |
 | `git.tagPrefix` | `string` | `"v"` | Prefix prepended to the version |
@@ -216,6 +217,49 @@ export default {
 ```
 
 shipx downloads the tarball, computes SHA256, updates `url`/`sha256` in the formula, commits, and pushes from the tap.
+
+### Apple apps (Xcode)
+
+shipx can release an iPhone, Mac, Apple TV or Vision Pro app to App Store Connect. A repo with a `project.yml` (XcodeGen) or a `*.xcodeproj` and no `package.json` counts as an Xcode project. Nothing else needs configuring for the common case, apart from the scheme if shipx can't guess it:
+
+```ts
+import type { ShipConfig } from "@lacymorrow/shipx";
+
+export default {
+  xcode: {
+    scheme: "CamFetti",
+    platforms: ["ios"],
+    buildNumberOffset: 9,
+  },
+} satisfies ShipConfig;
+```
+
+The version comes from `MARKETING_VERSION` in `project.yml` or a `.xcconfig`, and the bump rewrites it and puts it in the release commit. The usual prompt, `--beta`, `--dry-run`, changelog, tag, push and GitHub release all work as before. The npm and Homebrew steps print a line and skip themselves, and preflight doesn't ask for npm auth. A beta tag such as `v1.2.0-beta.0` writes `1.2.0` to `MARKETING_VERSION`, because App Store Connect rejects a suffix.
+
+After the push, the Xcode step runs `xcodegen generate` (when `project.yml` exists), then for each platform archives the scheme, exports the archive and uploads it. Each platform gets a spinner. When xcodebuild fails, shipx prints the last 30 lines and saves the whole log under `build/shipx-logs/`. The Apple Watch app ships inside the iOS archive, so there is no watchOS platform.
+
+shipx doesn't submit for review. Pick the build in App Store Connect and submit it there.
+
+```bash
+shipx patch               # archive, export, upload
+shipx --no-upload         # archive and export only
+shipx --dry-run           # print the exact xcodebuild commands
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `xcode.versionFile` | `string` | `project.yml` if present | File holding `MARKETING_VERSION`. A `project.yml` or a `.xcconfig` |
+| `xcode.buildNumber` | `"commitCount" \| "increment"` | `"commitCount"` | `commitCount` is `git rev-list --count HEAD` plus the offset, counted after the release commit. `increment` adds one to `CURRENT_PROJECT_VERSION` in `versionFile` and commits it |
+| `xcode.buildNumberOffset` | `number` | `0` | Added to the commit count, to stay above build numbers you already uploaded |
+| `xcode.generate` | `boolean` | `true` | Run `xcodegen generate` when `project.yml` exists |
+| `xcode.scheme` | `string` | XcodeGen `name:` or the `.xcodeproj` name | Scheme to archive |
+| `xcode.platforms` | `("ios" \| "macos" \| "tvos" \| "visionos")[]` | `["ios"]` | Platforms to archive, mapped to `generic/platform=iOS`, `generic/platform=macOS` and so on |
+| `xcode.exportOptionsPlist` | `string` | generated | Your own export options plist. shipx sets its `destination` to `upload` or `export` on a copy |
+| `xcode.ascKey` | `{ keyId, issuerId, keyPath }` | env | App Store Connect API key. Falls back to `ASC_KEY_ID` and `ASC_ISSUER_ID`, then `~/.appstoreconnect/env`. `keyPath` defaults to `~/.appstoreconnect/private_keys/AuthKey_<keyId>.p8` |
+| `xcode.upload` | `boolean` | `true` | Upload after exporting. `--no-upload` overrides it |
+| `steps.xcode` | `boolean` | `true` | Turn the whole step off |
+
+The generated export options use the `app-store-connect` method and set `manageAppVersionAndBuildNumber` to false, so the build number shipx chose is the one that lands. shipx passes the key to xcodebuild by path and never reads or prints it.
 
 ### Multi-project deploy
 

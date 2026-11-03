@@ -240,7 +240,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		steps: {
 			preflight: true, test: false, cleanup: false, changelog: false,
 			bumpVersion: true, commit: true, tag: true, push: true,
-			githubRelease: false, npm: true, homebrew: false, watchCi: true,
+			githubRelease: false, npm: true, homebrew: false, watchCi: true, xcode: true,
 		},
 		git: {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],
@@ -249,6 +249,7 @@ function makeFakeConfig(name: string): ResolvedConfig {
 		github: { draft: false, assets: [] },
 		npm: { cwd: `/tmp/fake/${name}`, access: "public", targets: [{ cwd: `/tmp/fake/${name}`, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		xcode: { enabled: false, versionFile: "", buildNumber: "commitCount", buildNumberOffset: 0, generate: true, scheme: "", platforms: ["ios"], exportOptionsPlist: "", ascKey: null, upload: true },
 		hooks: {},
 	};
 }

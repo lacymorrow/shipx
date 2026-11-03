@@ -6,6 +6,7 @@ import { configFileLabel } from "../config.ts";
 import { isUnpublishablePackage } from "../detect.ts";
 import type { ResolvedConfig } from "../types.ts";
 import { exec, isRepoArchived, readJson, run } from "../utils.ts";
+import { isXcodeOnly, readMarketingVersion } from "./xcode-project.ts";
 
 /**
  * Path to the package.json that will actually be published — read from
@@ -264,7 +265,10 @@ export async function runPreflight(config: ResolvedConfig, isBeta: boolean): Pro
 	const versionPkgPath = config.versionSource
 		? resolve(config.root, config.versionSource)
 		: resolve(config.root, config.packageJsonPaths[0] ?? "package.json");
-	if (existsSync(versionPkgPath)) {
+	if (isXcodeOnly(config)) {
+		const marketing = readMarketingVersion(config.root, config.xcode.versionFile);
+		if (marketing) checkTagNotExists(config, config.git.tagPrefix, marketing);
+	} else if (existsSync(versionPkgPath)) {
 		const pkg = readJson(versionPkgPath);
 		if (typeof pkg.version === "string") {
 			checkTagNotExists(config, config.git.tagPrefix, pkg.version);
@@ -275,10 +279,13 @@ export async function runPreflight(config: ResolvedConfig, isBeta: boolean): Pro
 
 	spinner.stop("Preflight OK");
 
-	checkPackagePublishable(config);
-	await checkNpmAuth(config);
-	checkPackageEntryPoints(config);
-	checkPackageFiles(config);
+	// An Xcode project has no package.json: no npm auth, entry points or files to check.
+	if (!isXcodeOnly(config)) {
+		checkPackagePublishable(config);
+		await checkNpmAuth(config);
+		checkPackageEntryPoints(config);
+		checkPackageFiles(config);
+	}
 
 	return branch;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configFileLabel, loadConfig } from "./config.ts";
 import { runHook } from "./hooks.ts";
@@ -19,11 +19,13 @@ import { publishHomebrew } from "./steps/homebrew.ts";
 import { publishNpm } from "./steps/npm.ts";
 import { runPreflight } from "./steps/preflight.ts";
 import { runTests } from "./steps/test.ts";
+import { runXcode } from "./steps/xcode.ts";
+import { readMarketingVersion } from "./steps/xcode-project.ts";
 import { pickVersion } from "./steps/version.ts";
 import { reconcileRegistryVersion } from "./registry.ts";
 import { exec, isGitRepo, parseFlag, readJson, setupCleanExit } from "./utils.ts";
 
-export type { ShipConfig, BumpFileConfig, Hooks, HookFunction, HookContext, NpmTarget } from "./types.ts";
+export type { ShipConfig, BumpFileConfig, Hooks, HookFunction, HookContext, NpmTarget, XcodeConfig, XcodePlatform, AscKeyConfig } from "./types.ts";
 
 setupCleanExit();
 
@@ -63,6 +65,7 @@ ${pc.bold("OPTIONS")}
   ${pc.yellow("--no-tests")}         Disable tests (overrides config steps.test=true)
   ${pc.yellow("--no-cleanup")}       Disable cleanup (overrides config steps.cleanup=true)
   ${pc.yellow("--no-watch-ci")}      Don't watch tag-triggered CI runs after the push
+  ${pc.yellow("--no-upload")}        Xcode projects: archive and export, but don't upload to App Store Connect
   ${pc.yellow("--multi")}            Batch deploy multiple projects from the parent directory
                      Unattended, name the bump: ${pc.green("shipx --multi patch --yes")}
   ${pc.yellow("--help, -h")}         Show this help message
@@ -76,7 +79,7 @@ ${pc.bold("CONFIG")}
   1. shipx.config.mts / .ts / .mjs / .js
   2. .shipxrc.json / .shipxrc
   3. "shipx" key in package.json
-  4. Defaults (auto-detects package.json, Cargo.toml, homebrew-tap)
+  4. Defaults (auto-detects package.json, Cargo.toml, homebrew-tap, Xcode projects)
 
 ${pc.dim("https://github.com/lacymorrow/shipx")}
 `);
@@ -188,6 +191,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const noTests = argv.includes("--no-tests");
 	const noCleanup = argv.includes("--no-cleanup");
 	const noWatchCi = argv.includes("--no-watch-ci");
+	const noUpload = argv.includes("--no-upload");
 	const customTag = parseFlag(argv, "--tag");
 	const otpFlag = parseFlag(argv, "--otp");
 	if (argv.includes("--otp") && !otpFlag) {
@@ -199,7 +203,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		process.exit(1);
 	}
 
-	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup", "--no-watch-ci", "--yes", "-y"];
+	const filteredFlags = ["--beta", "--draft", "--dry-run", "--any-branch", "--no-tests", "--no-cleanup", "--no-watch-ci", "--no-upload", "--yes", "-y"];
 	let args = argv.filter((a) => !filteredFlags.includes(a));
 	if (customTag) {
 		const tagIdx = args.indexOf("--tag");
@@ -224,23 +228,40 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	const pkgJsonPaths = config.packageJsonPaths.map((rel) =>
 		resolve(root, rel),
 	);
-	if (!pkgJsonPaths.length) {
+	// An Xcode project has no package.json: the version is MARKETING_VERSION.
+	const xcodeVersionOnly = config.xcode.enabled && !pkgJsonPaths.length;
+	if (!pkgJsonPaths.length && !xcodeVersionOnly) {
 		p.log.error(`No ${pc.cyan("packageJsonPaths")} configured. Add them to ${pc.cyan(configFileLabel(config))}.`);
 		process.exit(1);
 	}
 
-	const versionSourcePath = config.versionSource
-		? resolve(root, config.versionSource)
-		: pkgJsonPaths[0];
-	const rootPkg = readJson(pkgJsonPaths[0]);
-	const versionPkg = config.versionSource ? readJson(versionSourcePath) : rootPkg;
-	const currentVersion = versionPkg.version as string;
-	if (!currentVersion) {
-		p.log.error(`No version found in ${pc.cyan(versionSourcePath)}`);
-		process.exit(1);
+	let rootPkg: Record<string, unknown> = {};
+	let currentVersion: string;
+	if (xcodeVersionOnly) {
+		const marketing = readMarketingVersion(root, config.xcode.versionFile);
+		if (!marketing) {
+			p.log.error(
+				`No MARKETING_VERSION found in ${pc.cyan(config.xcode.versionFile || "project.yml")}.\n` +
+				`  Set ${pc.cyan("xcode.versionFile")} in ${pc.cyan(configFileLabel(config))} to the file that holds it (project.yml or a .xcconfig).`,
+			);
+			process.exit(1);
+		}
+		currentVersion = marketing;
+	} else {
+		const versionSourcePath = config.versionSource
+			? resolve(root, config.versionSource)
+			: pkgJsonPaths[0];
+		rootPkg = readJson(pkgJsonPaths[0]);
+		const versionPkg = config.versionSource ? readJson(versionSourcePath) : rootPkg;
+		currentVersion = versionPkg.version as string;
+		if (!currentVersion) {
+			p.log.error(`No version found in ${pc.cyan(versionSourcePath)}`);
+			process.exit(1);
+		}
 	}
 
-	let projectName = "shipx";
+	let projectName = xcodeVersionOnly ? basename(root) : "shipx";
+	if (xcodeVersionOnly && config.xcode.scheme) projectName = config.xcode.scheme;
 	if (typeof rootPkg.name === "string") {
 		projectName = rootPkg.name.replace(/^@[^/]+\//, "");
 	}
@@ -277,6 +298,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		p.log.info(config.npm.autoDetectedReason);
 	}
 
+	// No package.json means nothing for npm or Homebrew to ship.
+	if (xcodeVersionOnly) {
+		if (config.steps.npm) p.log.info(`Skipping npm: ${pc.cyan(projectName)} is an Xcode project (no package.json)`);
+		if (config.steps.homebrew) p.log.info(`Skipping Homebrew: ${pc.cyan(projectName)} is an Xcode project`);
+	}
+
 	const hookCtx = () => ({ config, version: newVersion, tag: gitTag, changelog, isBeta });
 	let newVersion = "";
 	let gitTag = "";
@@ -303,7 +330,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	let baseVersion = currentVersion;
 	const isPrivate = rootPkg.private === true;
-	if (config.steps.npm && !isPrivate && typeof rootPkg.name === "string") {
+	if (config.steps.npm && !xcodeVersionOnly && !isPrivate && typeof rootPkg.name === "string") {
 		if (isDryRun) {
 			p.log.info(`${pc.dim("[dry-run]")} Would check npm registry for ${pc.cyan(projectName)}`);
 		} else {
@@ -343,7 +370,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	if (config.steps.bumpVersion) {
 		await runHook("preBump", config.hooks.preBump, hookCtx());
 		if (isDryRun) {
-			const files = [...config.packageJsonPaths, ...config.bumpFiles.map((f) => f.path)];
+			const files = [...getFilesToStage(config)];
 			p.log.info(`${pc.dim("[dry-run]")} Would bump version in: ${files.map((f) => pc.cyan(f)).join(", ")}`);
 			if (config.cargoWorkspaces.length) {
 				p.log.info(`${pc.dim("[dry-run]")} Would bump Cargo workspaces: ${config.cargoWorkspaces.map((d) => pc.cyan(d)).join(", ")}`);
@@ -447,6 +474,19 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		await runHook("postPush", config.hooks.postPush, hookCtx());
 	}
 
+	let xcodeFailed = false;
+	if (config.steps.xcode && config.xcode.enabled) {
+		await runHook("preXcode", config.hooks.preXcode, hookCtx());
+		try {
+			await runXcode(config, { noUpload });
+		} catch (err) {
+			xcodeFailed = true;
+			process.exitCode = 1;
+			p.log.error(`Xcode release failed: ${err instanceof Error ? err.message : String(err)}. The tag is already pushed.`);
+		}
+		await runHook("postXcode", config.hooks.postXcode, hookCtx());
+	}
+
 	if (config.steps.githubRelease) {
 		await runHook("preGithubRelease", config.hooks.preGithubRelease, hookCtx());
 		if (isDryRun) {
@@ -462,7 +502,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 	}
 
 	let npmPublishFailed = false;
-	if (config.steps.npm) {
+	if (config.steps.npm && !xcodeVersionOnly) {
 		await runHook("preNpm", config.hooks.preNpm, hookCtx());
 		if (isDryRun) {
 			if (config.npm.targets.length > 1) {
@@ -497,7 +537,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 		await runHook("postNpm", config.hooks.postNpm, hookCtx());
 	}
 
-	if (config.steps.homebrew && !isBeta) {
+	if (config.steps.homebrew && !isBeta && !xcodeVersionOnly) {
 		await runHook("preHomebrew", config.hooks.preHomebrew, hookCtx());
 		if (isDryRun) {
 			const brewMode = Object.keys(config.homebrew.binaryAssets).length > 0 ? "binary" : "source";
@@ -506,7 +546,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 			await publishHomebrew(config, gitTag);
 		}
 		await runHook("postHomebrew", config.hooks.postHomebrew, hookCtx());
-	} else if (isBeta && config.steps.homebrew) {
+	} else if (isBeta && config.steps.homebrew && !xcodeVersionOnly) {
 		p.log.info("Skipping Homebrew for beta release");
 	}
 
@@ -548,6 +588,9 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 
 	if (isDryRun) {
 		p.outro(`${pc.dim("[dry-run]")} Would release ${pc.green(gitTag)} — no changes were made`);
+		console.log();
+	} else if (xcodeFailed) {
+		p.outro(pc.red(`✗ Half-shipped ${gitTag}: the Xcode archive or upload failed, so the build is not in App Store Connect`));
 		console.log();
 	} else if (releaseIncomplete) {
 		process.exitCode = 1;

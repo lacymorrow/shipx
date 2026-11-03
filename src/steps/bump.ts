@@ -3,7 +3,8 @@ import pc from "picocolors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
-import { readJson, writeJson } from "../utils.ts";
+import { errorText, exec, readJson, writeJson } from "../utils.ts";
+import { computeBuildNumber, writeMarketingVersion, writeStoredBuildNumber } from "./xcode-project.ts";
 
 export function bumpVersionFiles(
 	config: ResolvedConfig,
@@ -24,6 +25,30 @@ export function bumpVersionFiles(
 		pkg.version = newVersion;
 		writeJson(abs, pkg);
 		bumped.push(rel);
+	}
+
+	if (config.xcode.enabled && config.xcode.versionFile) {
+		const { versionFile } = config.xcode;
+		// MARKETING_VERSION is x.y.z only; App Store Connect rejects a -beta suffix.
+		const marketing = newVersion.replace(/-.*$/, "");
+		if (writeMarketingVersion(config.root, versionFile, marketing)) {
+			bumped.push(versionFile);
+			// The generated project holds MARKETING_VERSION too. Regenerate now so
+			// the release commit carries the same project the archive will build.
+			if (config.xcode.generate && existsSync(resolve(config.root, "project.yml"))) {
+				try {
+					exec("xcodegen", ["generate"], { cwd: config.root });
+				} catch (err) {
+					p.log.warn(`xcodegen generate failed: ${errorText(err)}`);
+				}
+			}
+			if (config.xcode.buildNumber === "increment") {
+				const next = computeBuildNumber(config.root, config.xcode);
+				writeStoredBuildNumber(config.root, versionFile, next);
+			}
+		} else {
+			p.log.warn(`MARKETING_VERSION not found in ${pc.cyan(versionFile)} — file unchanged`);
+		}
 	}
 
 	for (const fileConfig of config.bumpFiles) {
@@ -56,8 +81,24 @@ export function bumpVersionFiles(
 
 export function getFilesToStage(config: ResolvedConfig): string[] {
 	const files: string[] = [...config.packageJsonPaths];
+	if (config.xcode.enabled && config.xcode.versionFile && !files.includes(config.xcode.versionFile)) {
+		files.push(config.xcode.versionFile);
+	}
+	if (config.xcode.enabled) files.push(...trackedXcodeProjects(config.root));
 	for (const f of config.bumpFiles) {
 		files.push(f.path);
 	}
 	return files;
+}
+
+/** `*.xcodeproj/project.pbxproj` files git tracks, so xcodegen output rides in the release commit. */
+export function trackedXcodeProjects(root: string): string[] {
+	try {
+		return exec("git", ["ls-files", "--", "*.xcodeproj/project.pbxproj"], { cwd: root })
+			.split("\n")
+			.map((f) => f.trim())
+			.filter(Boolean);
+	} catch {
+		return [];
+	}
 }

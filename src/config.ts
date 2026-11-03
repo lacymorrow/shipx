@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { detectPublishTarget } from "./detect.ts";
 import type { ResolvedConfig, ShipConfig } from "./types.ts";
+import { detectScheme, detectVersionFile, hasXcodeProject, isXcodeProject, resolveAscKey } from "./steps/xcode-project.ts";
 import { detectDefaultBranch, exec, readJson } from "./utils.ts";
 
 /**
@@ -54,6 +55,7 @@ const DEFAULTS: Omit<ResolvedConfig, "root" | "configFile"> = {
 		npm: true,
 		homebrew: true,
 		watchCi: true,
+		xcode: true,
 	},
 	git: {
 		releaseBranch: "main",
@@ -79,6 +81,18 @@ const DEFAULTS: Omit<ResolvedConfig, "root" | "configFile"> = {
 		repoSlug: "",
 		commitMessage: "{formula}: update to {tag}",
 		binaryAssets: {},
+	},
+	xcode: {
+		enabled: false,
+		versionFile: "",
+		buildNumber: "commitCount",
+		buildNumberOffset: 0,
+		generate: true,
+		scheme: "",
+		platforms: ["ios"],
+		exportOptionsPlist: "",
+		ascKey: null,
+		upload: true,
 	},
 	hooks: {},
 };
@@ -120,6 +134,7 @@ function mergeConfig(
 			...user.homebrew,
 			binaryAssets: user.homebrew?.binaryAssets ?? base.homebrew.binaryAssets,
 		},
+		xcode: base.xcode,
 		hooks: { ...base.hooks, ...user.hooks },
 	};
 }
@@ -234,6 +249,28 @@ export async function loadConfig(root: string): Promise<ResolvedConfig> {
 		if (!userSetVersionSource) {
 			merged.versionSource = subPath;
 		}
+	}
+
+	// Xcode project: `project.yml` or `*.xcodeproj` with no package.json, or an
+	// explicit `xcode` block. packageJsonPaths stays empty for the former, and
+	// the version comes from MARKETING_VERSION.
+	const userXcode = userConfig.xcode ?? {};
+	const xcodeEnabled = userConfig.xcode !== undefined
+		? hasXcodeProject(root)
+		: isXcodeProject(root);
+	if (xcodeEnabled) {
+		merged.xcode = {
+			enabled: true,
+			versionFile: userXcode.versionFile ?? detectVersionFile(root),
+			buildNumber: userXcode.buildNumber ?? "commitCount",
+			buildNumberOffset: userXcode.buildNumberOffset ?? 0,
+			generate: userXcode.generate ?? true,
+			scheme: userXcode.scheme ?? detectScheme(root),
+			platforms: userXcode.platforms?.length ? userXcode.platforms : ["ios"],
+			exportOptionsPlist: userXcode.exportOptionsPlist ?? "",
+			ascKey: resolveAscKey(userXcode.ascKey),
+			upload: userXcode.upload ?? true,
+		};
 	}
 
 	if (!merged.packageJsonPaths.length && existsSync(pkgPath)) {
