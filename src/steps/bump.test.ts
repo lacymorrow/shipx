@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bumpVersionFiles } from "./bump.ts";
+import { bumpVersionFiles, getFilesToStage } from "./bump.ts";
 import type { ResolvedConfig } from "../types.ts";
 
 function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
@@ -21,7 +21,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		steps: {
 			preflight: true, test: false, cleanup: false, changelog: true,
 			bumpVersion: true, commit: true, tag: true, push: true,
-			githubRelease: true, npm: true, homebrew: true, watchCi: true,
+			githubRelease: true, npm: true, homebrew: true, watchCi: true, xcode: true,
 		},
 		git: {
 			releaseBranch: "main", tagPrefix: "v", extraTags: [],
@@ -30,6 +30,7 @@ function makeConfig(root: string, overrides: Partial<ResolvedConfig> = {}): Reso
 		github: { draft: false, assets: [] },
 		npm: { cwd: root, access: "public", targets: [{ cwd: root, access: "public" }], autoDetectedReason: "" },
 		homebrew: { tapPath: "", formulaFile: "", repoSlug: "", commitMessage: "", binaryAssets: {} },
+		xcode: { enabled: false, versionFile: "", buildNumber: "commitCount", buildNumberOffset: 0, generate: true, scheme: "", platforms: ["ios"], exportOptionsPlist: "", ascKey: null, upload: true },
 		hooks: {},
 		...overrides,
 	};
@@ -101,6 +102,24 @@ describe("bumpVersionFiles (N2)", () => {
 			expect(readFileSync(filePath, "utf-8")).toContain(`VERSION = "1.0.1"`);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("bumpVersionFiles for an Xcode project", () => {
+	test("rewrites MARKETING_VERSION without a beta suffix and stages the version file", () => {
+		const root = mkdtempSync(join(tmpdir(), "shipx-bump-xcode-"));
+		try {
+			writeFileSync(join(root, "project.yml"), 'name: App\nsettings:\n  base:\n    MARKETING_VERSION: "1.0.0"\n    CURRENT_PROJECT_VERSION: "4"\n');
+			const config = makeConfig(root);
+			config.xcode = { ...config.xcode, enabled: true, versionFile: "project.yml", buildNumber: "increment" };
+			bumpVersionFiles(config, "1.1.0-beta.0");
+			const out = readFileSync(join(root, "project.yml"), "utf-8");
+			expect(out).toContain('MARKETING_VERSION: "1.1.0"');
+			expect(out).toContain('CURRENT_PROJECT_VERSION: "5"');
+			expect(getFilesToStage(config)).toEqual(["project.yml"]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
 		}
 	});
 });

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../types.ts";
 import { readJson, writeJson } from "../utils.ts";
+import { computeBuildNumber, writeMarketingVersion, writeStoredBuildNumber } from "./xcode-project.ts";
 
 export function bumpVersionFiles(
 	config: ResolvedConfig,
@@ -24,6 +25,21 @@ export function bumpVersionFiles(
 		pkg.version = newVersion;
 		writeJson(abs, pkg);
 		bumped.push(rel);
+	}
+
+	if (config.xcode.enabled && config.xcode.versionFile) {
+		const { versionFile } = config.xcode;
+		// MARKETING_VERSION is x.y.z only; App Store Connect rejects a -beta suffix.
+		const marketing = newVersion.replace(/-.*$/, "");
+		if (writeMarketingVersion(config.root, versionFile, marketing)) {
+			bumped.push(versionFile);
+			if (config.xcode.buildNumber === "increment") {
+				const next = computeBuildNumber(config.root, config.xcode);
+				writeStoredBuildNumber(config.root, versionFile, next);
+			}
+		} else {
+			p.log.warn(`MARKETING_VERSION not found in ${pc.cyan(versionFile)} — file unchanged`);
+		}
 	}
 
 	for (const fileConfig of config.bumpFiles) {
@@ -56,6 +72,9 @@ export function bumpVersionFiles(
 
 export function getFilesToStage(config: ResolvedConfig): string[] {
 	const files: string[] = [...config.packageJsonPaths];
+	if (config.xcode.enabled && config.xcode.versionFile && !files.includes(config.xcode.versionFile)) {
+		files.push(config.xcode.versionFile);
+	}
 	for (const f of config.bumpFiles) {
 		files.push(f.path);
 	}

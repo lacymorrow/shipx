@@ -38,6 +38,68 @@ export interface Hooks {
 	postNpm?: HookFunction;
 	preHomebrew?: HookFunction;
 	postHomebrew?: HookFunction;
+	preXcode?: HookFunction;
+	postXcode?: HookFunction;
+}
+
+export type XcodePlatform = "ios" | "macos" | "tvos" | "visionos";
+
+export interface AscKeyConfig {
+	/** App Store Connect API key ID. Default: env `ASC_KEY_ID`, then `~/.appstoreconnect/env` */
+	keyId?: string;
+	/** App Store Connect issuer ID. Default: env `ASC_ISSUER_ID`, then `~/.appstoreconnect/env` */
+	issuerId?: string;
+	/** Path to the .p8 key. Default: `~/.appstoreconnect/private_keys/AuthKey_<keyId>.p8` */
+	keyPath?: string;
+}
+
+export interface XcodeConfig {
+	/**
+	 * File holding `MARKETING_VERSION`, relative to the project root. A XcodeGen
+	 * `project.yml` or a `.xcconfig`. Default: `project.yml` when it exists.
+	 */
+	versionFile?: string;
+	/**
+	 * Where the build number (CURRENT_PROJECT_VERSION) comes from.
+	 * - `"commitCount"` (default): `git rev-list --count HEAD` plus `buildNumberOffset`,
+	 *   counted after the release commit.
+	 * - `"increment"`: the stored CURRENT_PROJECT_VERSION in `versionFile` plus one,
+	 *   written back and staged in the release commit.
+	 */
+	buildNumber?: "commitCount" | "increment";
+	/** Added to the commit count. Use it to stay above build numbers already uploaded. Default: 0 */
+	buildNumberOffset?: number;
+	/** Run `xcodegen generate` before archiving when `project.yml` exists. Default: true */
+	generate?: boolean;
+	/** Xcode scheme to archive. Default: XcodeGen `name:` or the `.xcodeproj` name */
+	scheme?: string;
+	/**
+	 * Platforms to archive, each mapped to `generic/platform=<Platform>`.
+	 * The Apple Watch app ships inside the iOS archive, so there is no watchOS entry.
+	 * Default: `["ios"]`
+	 */
+	platforms?: XcodePlatform[];
+	/** Custom export options plist, relative to the project root. Default: a generated `app-store-connect` plist */
+	exportOptionsPlist?: string;
+	/** App Store Connect API key used for provisioning updates and the upload */
+	ascKey?: AscKeyConfig;
+	/** Upload to App Store Connect after exporting. `--no-upload` overrides it. Default: true */
+	upload?: boolean;
+}
+
+export interface ResolvedXcodeConfig {
+	/** True for an Xcode project (auto-detected, or `xcode` is set in the config) */
+	enabled: boolean;
+	versionFile: string;
+	buildNumber: "commitCount" | "increment";
+	buildNumberOffset: number;
+	generate: boolean;
+	scheme: string;
+	platforms: XcodePlatform[];
+	exportOptionsPlist: string;
+	/** Null when no key id and issuer id could be found */
+	ascKey: { keyId: string; issuerId: string; keyPath: string } | null;
+	upload: boolean;
 }
 
 export interface NpmTarget {
@@ -84,6 +146,12 @@ export interface ShipConfig {
 		githubRelease?: boolean;
 		npm?: boolean;
 		homebrew?: boolean;
+		/**
+		 * Archive, export and upload an Xcode project to App Store Connect.
+		 * Runs after the push and before the GitHub release; does nothing
+		 * unless the project is an Xcode project. Default: true
+		 */
+		xcode?: boolean;
 		/**
 		 * After the push, watch the CI runs the pushed tag(s) triggered and
 		 * report what they did. Only active when at least one step is delegated
@@ -173,6 +241,13 @@ export interface ShipConfig {
 		 */
 		binaryAssets?: Record<string, string>;
 	};
+	/**
+	 * Apple app (Xcode) release settings. A repo with `project.yml` or a
+	 * `*.xcodeproj` and no `package.json` is treated as an Xcode project even
+	 * when this is omitted. Then the version lives in MARKETING_VERSION, and the
+	 * npm and Homebrew steps skip themselves.
+	 */
+	xcode?: XcodeConfig;
 	/** Lifecycle hooks that run before/after each pipeline step */
 	hooks?: Hooks;
 }
@@ -186,7 +261,7 @@ export interface ResolvedGitConfig {
 	pushFlags: string[];
 }
 
-export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks">> {
+export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks" | "xcode">> {
 	root: string;
 	/**
 	 * Filename this config was actually loaded from, e.g. `shipx.config.mts`,
@@ -214,5 +289,6 @@ export interface ResolvedConfig extends Required<Omit<ShipConfig, "git" | "hooks
 		autoDetectedReason: string;
 	};
 	homebrew: Required<NonNullable<ShipConfig["homebrew"]>>;
+	xcode: ResolvedXcodeConfig;
 	hooks: Hooks;
 }
