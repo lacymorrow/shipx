@@ -79,6 +79,13 @@ export interface XcodeConfig {
 	 * Default: `["ios"]`
 	 */
 	platforms?: XcodePlatform[];
+	/**
+	 * Platforms to archive without code signing; the export step signs them with the App Store
+	 * Connect key instead. Use it for a platform the team has no registered device for (often
+	 * tvOS or visionOS), where Xcode cannot make the development profile an archive asks for.
+	 * Default: `[]`
+	 */
+	unsignedArchive?: XcodePlatform[];
 	/** Custom export options plist, relative to the project root. Default: a generated `app-store-connect` plist */
 	exportOptionsPlist?: string;
 	/** App Store Connect API key used for provisioning updates and the upload */
@@ -96,6 +103,7 @@ export interface ResolvedXcodeConfig {
 	generate: boolean;
 	scheme: string;
 	platforms: XcodePlatform[];
+	unsignedArchive: XcodePlatform[];
 	exportOptionsPlist: string;
 	/** Null when no key id and issuer id could be found */
 	ascKey: { keyId: string; issuerId: string; keyPath: string } | null;

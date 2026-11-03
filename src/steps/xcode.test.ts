@@ -56,6 +56,7 @@ function makeConfig(over: Partial<ResolvedConfig["xcode"]> = {}, top: Partial<Re
 			generate: true,
 			scheme: "CamFetti",
 			platforms: ["ios"],
+			unsignedArchive: [],
 			exportOptionsPlist: "",
 			ascKey: { keyId: "KEY123", issuerId: "issuer-secret", keyPath },
 			upload: true,
@@ -103,6 +104,14 @@ describe("command construction", () => {
 			return a[a.indexOf("-destination") + 1];
 		});
 		expect(dests).toEqual(["generic/platform=iOS", "generic/platform=macOS", "generic/platform=tvOS", "generic/platform=visionOS"]);
+	});
+
+	test("unsignedArchive archives only the listed platforms without signing", () => {
+		const cfg = makeConfig({ unsignedArchive: ["tvos"] });
+		expect(x.archiveCommand(cfg, "tvos", 1).args).toContain("CODE_SIGNING_ALLOWED=NO");
+		expect(x.archiveCommand(cfg, "ios", 1).args).not.toContain("CODE_SIGNING_ALLOWED=NO");
+		// The export still signs with the key.
+		expect(x.exportCommand(cfg, "tvos", 1).args).toContain("-authenticationKeyID");
 	});
 
 	test("without a key there are no auth flags", () => {

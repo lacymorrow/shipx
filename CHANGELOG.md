@@ -11,6 +11,7 @@ Versions missing from this file shipped only a version bump or a dependency upda
 
 ### Added
 
+- `xcode.unsignedArchive` archives the listed platforms without code signing and lets the export sign them with the App Store Connect key. A team with no Apple TV or Vision Pro registered can't get the development profile an archive asks for, so tvOS and visionOS archives failed before.
 - **Apple app (Xcode) releases** (`steps/xcode.ts`, `steps/xcode-project.ts`, `config.ts`, `cli.ts`, `steps/bump.ts`, `steps/preflight.ts`). A repo with `project.yml` or a `*.xcodeproj` and no `package.json` is now an Xcode project. The version is `MARKETING_VERSION` in `project.yml` or a `.xcconfig`, rewritten by the bump and staged in the release commit. After the push, a new step runs `xcodegen generate`, archives each platform in `xcode.platforms`, exports with an `app-store-connect` options plist and uploads to App Store Connect, using an API key from `xcode.ascKey`, `ASC_KEY_ID`/`ASC_ISSUER_ID` or `~/.appstoreconnect/env`. Build numbers are the commit count plus `xcode.buildNumberOffset`, or an incremented `CURRENT_PROJECT_VERSION`. `--no-upload` archives and exports only, `--dry-run` prints the exact xcodebuild commands, and a failure prints the last 30 log lines and saves the full log under `build/shipx-logs/`. The npm and Homebrew steps skip themselves and preflight no longer wants npm auth. There is no submit-for-review.
 
 ### Fixed

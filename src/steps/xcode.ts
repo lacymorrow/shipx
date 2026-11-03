@@ -47,6 +47,8 @@ export function archiveCommand(config: ResolvedConfig, platform: XcodePlatform, 
 			"-destination", XCODE_PLATFORM_DESTINATIONS[platform],
 			"-archivePath", archivePathFor(config, platform, build),
 			`CURRENT_PROJECT_VERSION=${build}`,
+			// No registered device for this platform: archive unsigned, the export signs it.
+			...(config.xcode.unsignedArchive.includes(platform) ? ["CODE_SIGNING_ALLOWED=NO"] : []),
 			"-allowProvisioningUpdates",
 			...authArgs(config),
 			"archive",
